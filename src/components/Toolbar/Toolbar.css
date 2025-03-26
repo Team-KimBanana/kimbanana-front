@@ -1,0 +1,120 @@
+.toolbar {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 6px;
+    border-radius: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    gap: 4px;
+}
+
+.toolbar-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 8px;
+    transition: background 0.2s ease-in-out;
+}
+
+.toolbar-btn img {
+    width: 25px;
+    height: 25px;
+    filter: brightness(0) invert(0.2);
+}
+
+.toolbar-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-btn.active {
+    background: #D2A742;
+    border-radius: 8px;
+}
+
+.divider {
+    width: 1px;
+    height: 24px;
+    background: #ccc;
+    margin: 0 8px;
+}
+
+.shape-dropdown {
+    position: relative;
+}
+
+.shape-menu {
+    position: absolute;
+    top: -140px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    z-index: 100;
+    width: 120px;
+}
+
+.shape-menu button {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 100%;
+}
+
+.shape-menu button img {
+    width: 20px;
+    height: 20px;
+}
+
+.shape-menu button span {
+    font-size: 14px;
+    color: black;
+}
+
+.shape-menu button:hover {
+    background: #f0f0f0;
+}
+
+/* ✅ 색상 선택 드롭다운 */
+.color-dropdown {
+    position: relative;
+}
+
+.color-menu {
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: row;
+    padding: 8px;
+    z-index: 100;
+    width: auto;
+    gap: 6px;
+}
+
+.color-menu button {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out;
+}
+
+.color-menu button:hover {
+    transform: scale(1.1);
+    border: 2px solid #ccc;
+}

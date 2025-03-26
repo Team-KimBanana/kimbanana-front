@@ -1,0 +1,69 @@
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to right, #ffffff, #F6DE55);
+    padding: 0 20px;
+    border-bottom: 1px solid #D4D1D1;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+}
+
+.logo {
+    height: 35px;
+}
+
+.title-input {
+    flex: 1;
+    margin: 0 20px;
+    padding: 8px;
+    font-size: 15px;
+    font-weight: bold;
+    text-align: center;
+    border: none;
+    background: transparent;
+    color: #555;
+    outline: none;
+}
+
+/* 플레이스홀더 스타일 */
+.title-input::placeholder {
+    color: rgba(0, 0, 0, 0.5);
+    font-weight: normal;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 3px;
+}
+
+.header-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+}
+
+.header-btn:hover {
+    opacity: 0.8;
+}
+
+
+.history-btn img {
+    width: 39px;
+    height: 39px;
+}
+.save-btn img {
+    width: 39px;
+    height: 39px;
+}
+.share-btn img {
+    width: 39px;
+    height: 39px;
+}
+.download-btn img {
+    width: 100px;
+}
