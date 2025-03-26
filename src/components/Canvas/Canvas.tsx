@@ -38,24 +38,24 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
     const textRefs = useRef<Map<number, Konva.Text>>(new Map());
 
     const addShape = (x: number, y: number) => {
-        if (activeTool === "rectangle" || activeTool === "circle" || activeTool === "triangle") {
-            let newShape: Shape;
+        let newShape: Shape;
 
-            if (activeTool === "rectangle") {
-                newShape = { type: "rectangle", x: x - 50, y: y - 50, width: 100, height: 100, color: "#B0B0B0", id: Date.now() };
-            } else if (activeTool === "circle") {
-                newShape = { type: "circle", x, y, radius: 50, color: "#B0B0B0", id: Date.now() };
-            } else {
-                newShape = {
-                    type: "triangle",
-                    points: [x, y - 50, x - 50, y + 50, x + 50, y + 50],
-                    color: "#B0B0B0",
-                    id: Date.now(),
-                };
-            }
-
-            setShapes((prevShapes) => [...prevShapes, newShape]);
+        if (activeTool === "rectangle") {
+            newShape = { type: "rectangle", x: x - 50, y: y - 50, width: 100, height: 100, color: "#B0B0B0", id: Date.now() };
+        } else if (activeTool === "circle") {
+            newShape = { type: "circle", x, y, radius: 50, color: "#B0B0B0", id: Date.now() };
+        } else if (activeTool === "triangle") {
+            newShape = {
+                type: "triangle",
+                points: [x, y - 50, x - 50, y + 50, x + 50, y + 50],
+                color: "#B0B0B0",
+                id: Date.now(),
+            };
+        } else {
+            return;
         }
+
+        setShapes((prevShapes) => [...prevShapes, newShape]);
     };
 
     const addText = (x: number, y: number) => {
@@ -65,10 +65,11 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
             x,
             y,
             text: "새 텍스트",
-            color: "black",
+            color: "#B0B0B0",
         };
         setTexts((prev) => [...prev, newText]);
     };
+
 
     // 색상 변경
     useEffect(() => {
@@ -87,7 +88,32 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
         }
     }, [selectedColor]);
 
-    // Transformer 적용
+    // 크기 조정 후 상태 업데이트
+    const handleTransformEnd = (shapeId: number) => {
+        const node = shapeRefs.current.get(shapeId);
+        if (!node) return;
+
+        setShapes((prevShapes) =>
+            prevShapes.map((shape) =>
+                shape.id === shapeId
+                    ? {
+                        ...shape,
+                        x: node.x(),
+                        y: node.y(),
+                        width: shape.type === "rectangle" ? node.width() : shape.width,
+                        height: shape.type === "rectangle" ? node.height() : shape.height,
+                        radius: shape.type === "circle" ? node.scaleX() * (shape.radius || 50) : shape.radius,
+                        points:
+                            shape.type === "triangle"
+                                ? [node.x(), node.y() - 50, node.x() - 50, node.y() + 50, node.x() + 50, node.y() + 50]
+                                : shape.points,
+                    }
+                    : shape
+            )
+        );
+    };
+
+    // 선택한 도형을 Transformer에 적용
     useEffect(() => {
         if (selectedShapeId !== null && transformerRef.current) {
             const selectedNode = shapeRefs.current.get(selectedShapeId);
@@ -100,24 +126,24 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
         }
     }, [selectedShapeId, shapes]);
 
-    // 도형 삭제
-    const deleteSelected = () => {
-        if (selectedShapeId !== null) {
-            setShapes((prev) => prev.filter((s) => s.id !== selectedShapeId));
-            setSelectedShapeId(null);
-        }
-        if (selectedTextId !== null) {
-            setTexts((prev) => prev.filter((t) => t.id !== selectedTextId));
-            setSelectedTextId(null);
-        }
+    // 선택한 도형 삭제 기능
+    const deleteShape = () => {
+        if (selectedShapeId === null) return;
+        setShapes((prevShapes) => prevShapes.filter((shape) => shape.id !== selectedShapeId));
+        setSelectedShapeId(null);
     };
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Backspace") deleteSelected();
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Backspace") {
+                deleteShape();
+            }
         };
+
         window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
     }, [selectedShapeId, selectedTextId]);
 
     return (
@@ -126,20 +152,12 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
                 width={1000}
                 height={563}
                 onMouseDown={(e) => {
-                    const clickedOnStage = e.target === e.target.getStage();
-
-                    if (clickedOnStage) {
+                    if (e.target === e.target.getStage()) {
                         setSelectedShapeId(null);
-                        setSelectedTextId(null);
+                        return;
                     }
-
-                    if (activeTool === "text" && clickedOnStage) {
-                        addText(e.evt.layerX, e.evt.layerY);
-                    }
-
-                    if ((activeTool === "rectangle" || activeTool === "circle" || activeTool === "triangle") && clickedOnStage) {
-                        addShape(e.evt.layerX, e.evt.layerY);
-                    }
+                    addShape(e.evt.layerX, e.evt.layerY);
+                    addText(e.evt.layerX, e.evt.layerY);
                 }}
 
             >
@@ -163,10 +181,8 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
                                         stroke={strokeColor}
                                         strokeWidth={2}
                                         draggable
-                                        onClick={() => {
-                                            setSelectedShapeId(shape.id);
-                                            setSelectedTextId(null);
-                                        }}
+                                        onClick={() => setSelectedShapeId(shape.id)}
+                                        onTransformEnd={() => handleTransformEnd(shape.id)}
                                     />
                                 )}
                                 {shape.type === "circle" && (
@@ -179,10 +195,8 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
                                         stroke={strokeColor}
                                         strokeWidth={2}
                                         draggable
-                                        onClick={() => {
-                                            setSelectedShapeId(shape.id);
-                                            setSelectedTextId(null);
-                                        }}
+                                        onClick={() => setSelectedShapeId(shape.id)}
+                                        onTransformEnd={() => handleTransformEnd(shape.id)}
                                     />
                                 )}
                                 {shape.type === "triangle" && (
@@ -194,10 +208,8 @@ const Canvas: React.FC<CanvasProps> = ({ activeTool, selectedColor }) => {
                                         strokeWidth={3}
                                         closed
                                         draggable
-                                        onClick={() => {
-                                            setSelectedShapeId(shape.id);
-                                            setSelectedTextId(null);
-                                        }}
+                                        onClick={() => setSelectedShapeId(shape.id)}
+                                        onTransformEnd={() => handleTransformEnd(shape.id)}
                                     />
                                 )}
                             </React.Fragment>
