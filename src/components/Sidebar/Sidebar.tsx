@@ -1,9 +1,35 @@
-import './Sidebar.css';
+import React from "react";
+import "./Sidebar.css";
 
-const Sidebar = () => {
+interface SidebarProps {
+    slides: number[];
+    currentSlide: number;
+    setCurrentSlide: React.Dispatch<React.SetStateAction<number>>;
+    onAddSlide: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({
+                                             slides,
+                                             currentSlide,
+                                             setCurrentSlide,
+                                             onAddSlide,
+                                         }) => {
     return (
         <div className="sidebar">
             <ul>
+                {slides.map((slideNum) => (
+                    <li
+                        key={slideNum}
+                        className={`slide-item ${slideNum === currentSlide ? "selected" : ""}`}
+                        onClick={() => setCurrentSlide(slideNum)}
+                    >
+                        <span className="slide-number">{slideNum}</span>
+                        <div className="slide-thumbnail" />
+                    </li>
+                ))}
+                <li onClick={onAddSlide}>
+                    <div className="slide-thumbnail add-slide">+</div>
+                </li>
             </ul>
         </div>
     );

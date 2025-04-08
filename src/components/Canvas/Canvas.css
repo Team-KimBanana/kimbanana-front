@@ -5,5 +5,10 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 0 20px 10px rgba(0, 0, 0, 0.02)
+    box-shadow: 0 0 20px 10px rgba(0, 0, 0, 0.02);
+    position: relative;
+}
+
+.whiteboard-container input {
+    z-index: 10;
 }

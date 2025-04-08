@@ -13,12 +13,12 @@ const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelecte
     const shapeMenuRef = useRef<HTMLDivElement | null>(null);
     const colorMenuRef = useRef<HTMLDivElement | null>(null);
 
-    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#B0B0B0"]; // ✅ 기본 색상 목록
+    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#B0B0B0"];
 
     const toggleShapeMenu = () => setIsShapeMenuOpen((prev) => !prev);
     const toggleColorMenu = () => setIsColorMenuOpen((prev) => !prev);
 
-    // ✅ 메뉴 바깥 클릭 시 닫기
+    // 메뉴 바깥 클릭 시 닫기
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (shapeMenuRef.current && !shapeMenuRef.current.contains(event.target as Node)) {

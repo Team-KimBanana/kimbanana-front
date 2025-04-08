@@ -23,6 +23,9 @@ importers:
       react-konva:
         specifier: '18'
         version: 18.2.10(@types/react@18.3.18)(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-konva-utils:
+        specifier: ^1.1.0
+        version: 1.1.0(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react-konva@18.2.10(@types/react@18.3.18)(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       zustand:
         specifier: ^5.0.3
         version: 5.0.3(@types/react@18.3.18)(react@18.3.1)
@@ -1038,6 +1041,14 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
+  react-konva-utils@1.1.0:
+    resolution: {integrity: sha512-3ylRN4eUeYU553tmY2Hgi69efrlUBjE8MLXXAQT+rLDBCPW4CwlvJFUCgPQoSEZmaJKTH/gvZz0Y4f8tUfV0rw==}
+    peerDependencies:
+      konva: ^8.3.5 || ^9.0.0
+      react: ^18.2.0 || ^19.0.0
+      react-dom: ^18.2.0 || ^19.0.0
+      react-konva: ^18.2.10 || ^19.0.1
+
   react-konva@18.2.10:
     resolution: {integrity: sha512-ohcX1BJINL43m4ynjZ24MxFI1syjBdrXhqVxYVDw2rKgr3yuS0x/6m1Y2Z4sl4T/gKhfreBx8KHisd0XC6OT1g==}
     peerDependencies:
@@ -1141,6 +1152,12 @@ packages:
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
+
+  use-image@1.1.1:
+    resolution: {integrity: sha512-n4YO2k8AJG/BcDtxmBx8Aa+47kxY5m335dJiCQA5tTeVU4XdhrhqR6wT0WISRXwdMEOv5CSjqekDZkEMiiWaYQ==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   vite@6.0.11:
     resolution: {integrity: sha512-4VL9mQPKoHy4+FE0NnRE/kbY51TOfaknxAjt3fJbGJxhIpBZiqVzlZDEesWWsuREXHwNdAoOFZ9MkPEVXczHwg==}
@@ -2150,6 +2167,14 @@ snapshots:
       react: 18.3.1
       scheduler: 0.23.2
 
+  react-konva-utils@1.1.0(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react-konva@18.2.10(@types/react@18.3.18)(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
+    dependencies:
+      konva: 9.3.18
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-konva: 18.2.10(@types/react@18.3.18)(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      use-image: 1.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
   react-konva@18.2.10(@types/react@18.3.18)(konva@9.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@types/react-reconciler': 0.28.9(@types/react@18.3.18)
@@ -2262,6 +2287,11 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  use-image@1.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   vite@6.0.11:
     dependencies:

@@ -15,6 +15,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "18",
+    "react-konva-utils": "^1.1.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
