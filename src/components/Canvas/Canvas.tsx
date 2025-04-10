@@ -12,6 +12,7 @@ interface CanvasProps {
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
     setTexts: React.Dispatch<React.SetStateAction<TextItem[]>>;
     currentSlide: number;
+    updateThumbnail: (slideId: number, dataUrl: string) => void;
 }
 
 interface Shape {
@@ -34,14 +35,25 @@ interface TextItem {
     color: string;
 }
 
-const drawTrianglePoints = (x: number, y: number): number[] => [
-    x,
-    y - 50,
-    x - 50,
-    y + 50,
-    x + 50,
-    y + 50,
-];
+const drawTrianglePoints = (
+    _x: number,
+    _y: number,
+    scaleX = 1,
+    scaleY = 1
+): number[] => {
+    const baseWidth = 100;
+    const baseHeight = 100;
+
+    const width = baseWidth * scaleX;
+    const height = baseHeight * scaleY;
+
+    return [
+        0, -height / 2,
+        -width / 2, height / 2,
+        width / 2, height / 2
+    ];
+};
+
 
 const Canvas: React.FC<CanvasProps> = ({
                                            activeTool,
@@ -52,6 +64,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                            setShapes,
                                            setTexts,
                                            currentSlide,
+                                           updateThumbnail,
                                        }) => {
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
@@ -61,6 +74,16 @@ const Canvas: React.FC<CanvasProps> = ({
     const shapeRefs = useRef<Map<number, Konva.Node>>(new Map());
     const textRefs = useRef<Map<number, Konva.Text>>(new Map());
     const backgroundRef = useRef<Konva.Rect>(null);
+    const stageRef = useRef<Konva.Stage>(null);
+
+    useEffect(() => { // 썸넬용
+        if (stageRef.current) {
+            const dataUrl = stageRef.current.toDataURL({ pixelRatio: 0.25 });
+            updateThumbnail(currentSlide, dataUrl);
+        }
+    }, [shapes, texts]);
+
+
 
     useEffect(() => {
         setSelectedShapeId(null);
@@ -111,7 +134,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const addText = (x: number, y: number) => {
         if (activeTool !== "text") return;
-
         const newText: TextItem = {
             id: Date.now(),
             x,
@@ -119,21 +141,12 @@ const Canvas: React.FC<CanvasProps> = ({
             text: "",
             color: selectedColor,
         };
-
         setTexts((prev) => [...prev, newText]);
         setSelectedTextId(newText.id);
+        setSelectedShapeId(null);
         setEditingText(newText);
         setActiveTool("cursor");
     };
-
-    const inputRef = useRef<HTMLTextAreaElement>(null);
-
-    useEffect(() => {
-        if (editingText && inputRef.current) {
-            inputRef.current.focus();
-        }
-    }, [editingText]);
-
 
     useEffect(() => {
         if (selectedShapeId !== null) {
@@ -155,33 +168,37 @@ const Canvas: React.FC<CanvasProps> = ({
         const node = shapeRefs.current.get(shapeId);
         if (!node) return;
 
-        const shape = shapes.find((s) => s.id === shapeId);
-        if (!shape) return;
-
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
 
-        const updatedShape = { ...shape };
-
-        if (shape.type === "rectangle") {
-            updatedShape.width = node.width() * scaleX;
-            updatedShape.height = node.height() * scaleY;
-        } else if (shape.type === "circle") {
-            updatedShape.radius = ((shape.radius ?? 50) * (scaleX + scaleY)) / 2;
-        }
-
-        updatedShape.x = node.x();
-        updatedShape.y = node.y();
-
-        node.scaleX(1);
-        node.scaleY(1);
-
-        if (shape.type === "triangle") {
-            updatedShape.points = drawTrianglePoints(updatedShape.x, updatedShape.y);
-        }
-
         setShapes((prev) =>
-            prev.map((s) => (s.id === shapeId ? updatedShape : s))
+            prev.map((shape) => {
+                if (shape.id !== shapeId) return shape;
+
+                const updatedShape: Shape = {
+                    ...shape,
+                    x: node.x(),
+                    y: node.y(),
+                };
+
+                if (shape.type === "rectangle") {
+                    updatedShape.width = (node.width() || 1) * scaleX;
+                    updatedShape.height = (node.height() || 1) * scaleY;
+                } else if (shape.type === "circle") {
+                    updatedShape.radius = ((shape.radius || 50) * (scaleX + scaleY)) / 2;
+                } else if (shape.type === "triangle") {
+                    const originalPoints = shape.points || drawTrianglePoints(0, 0);
+                    updatedShape.points = originalPoints.map((point, index) =>
+                        index % 2 === 0 ? point * scaleX : point * scaleY
+                    );
+                }
+
+                // scale 리셋!
+                node.scaleX(1);
+                node.scaleY(1);
+
+                return updatedShape;
+            })
         );
     };
 
@@ -197,16 +214,6 @@ const Canvas: React.FC<CanvasProps> = ({
             transformerRef.current?.nodes([]);
         }
     }, [selectedShapeId, shapes]);
-
-    const deleteShape = () => {
-        if (selectedShapeId !== null) {
-            setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId));
-            setSelectedShapeId(null);
-        } else if (selectedTextId !== null) {
-            setTexts((prev) => prev.filter((text) => text.id !== selectedTextId));
-            setSelectedTextId(null);
-        }
-    };
 
     useEffect(() => {
         if (selectedShapeId !== null) {
@@ -225,6 +232,16 @@ const Canvas: React.FC<CanvasProps> = ({
     }, [selectedColor]);
 
 
+    const deleteShape = () => {
+        if (selectedShapeId !== null) {
+            setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId));
+            setSelectedShapeId(null);
+        } else if (selectedTextId !== null) {
+            setTexts((prev) => prev.filter((text) => text.id !== selectedTextId));
+            setSelectedTextId(null);
+        }
+    };
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Backspace") {
@@ -238,6 +255,7 @@ const Canvas: React.FC<CanvasProps> = ({
     return (
         <div className="whiteboard-container" style={{ position: "relative" }}>
             <Stage
+                ref={stageRef}
                 width={1000}
                 height={563}
                 onMouseDown={(e) => {
@@ -306,7 +324,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                     ref={(node) => node && shapeRefs.current.set(shape.id, node)}
                                     x={shape.x!}
                                     y={shape.y!}
-                                    points={drawTrianglePoints(0, 0)} // always relative to (x, y)
+                                    points={shape.points!}
                                     fill={shape.color}
                                     closed
                                     draggable
@@ -319,13 +337,12 @@ const Canvas: React.FC<CanvasProps> = ({
                                         const { x, y } = e.target.position();
                                         setShapes((prev) =>
                                             prev.map((s) =>
-                                                s.id === shape.id
-                                                    ? { ...s, x, y, points: drawTrianglePoints(x, y) }
-                                                    : s
+                                                s.id === shape.id ? { ...s, x, y } : s
                                             )
                                         );
                                     }}
                                 />
+
                             )}
                         </React.Fragment>
                     ))}
@@ -368,8 +385,8 @@ const Canvas: React.FC<CanvasProps> = ({
             </Stage>
 
             {editingText && (
-                <textarea
-                    ref={inputRef}
+                <input
+                    type="text"
                     value={editingText.text}
                     autoFocus
                     style={{
@@ -382,8 +399,6 @@ const Canvas: React.FC<CanvasProps> = ({
                         borderRadius: "4px",
                         backgroundColor: "white",
                         outline: "none",
-                        resize: "none",
-                        zIndex: 1000,
                     }}
                     onChange={(e) => {
                         const newText = e.target.value;
@@ -395,24 +410,15 @@ const Canvas: React.FC<CanvasProps> = ({
                         );
                     }}
                     onBlur={() => {
-                        if (!editingText.text.trim()) {
-                            setTexts((prev) => prev.filter((text) => text.id !== editingText.id));
-                        }
                         setEditingText(null);
                     }}
                     onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            if (!editingText.text.trim()) {
-                                setTexts((prev) => prev.filter((text) => text.id !== editingText.id));
-                            }
+                        if (e.key === "Enter") {
                             setEditingText(null);
                         }
                     }}
                 />
             )}
-
-
         </div>
     );
 };

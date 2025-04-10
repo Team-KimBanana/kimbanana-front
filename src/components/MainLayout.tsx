@@ -33,6 +33,8 @@ const MainLayout: React.FC = () => {
     const [slideData, setSlideData] = useState<{ [key: number]: { shapes: Shape[]; texts: TextItem[] } }>({
         1: { shapes: [], texts: [] },
     });
+    const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
+
 
     useEffect(() => {
         console.log("현재 선택된 도구:", activeTool);
@@ -80,6 +82,7 @@ const MainLayout: React.FC = () => {
                     currentSlide={currentSlide}
                     setCurrentSlide={setCurrentSlide}
                     onAddSlide={handleAddSlide}
+                    thumbnails={thumbnails}
                 />
                 <div className="canvas-container">
                     <Canvas
@@ -91,6 +94,9 @@ const MainLayout: React.FC = () => {
                         setShapes={updateShapes}
                         setTexts={updateTexts}
                         currentSlide={currentSlide}
+                        updateThumbnail={(slideId, dataUrl) =>
+                            setThumbnails((prev) => ({ ...prev, [slideId]: dataUrl }))
+                        }
                     />
                     <Toolbar
                         activeTool={activeTool}
