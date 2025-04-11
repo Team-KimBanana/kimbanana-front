@@ -13,7 +13,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelecte
     const shapeMenuRef = useRef<HTMLDivElement | null>(null);
     const colorMenuRef = useRef<HTMLDivElement | null>(null);
 
-    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#B0B0B0"];
+    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#000000"];
 
     const toggleShapeMenu = () => setIsShapeMenuOpen((prev) => !prev);
     const toggleColorMenu = () => setIsColorMenuOpen((prev) => !prev);

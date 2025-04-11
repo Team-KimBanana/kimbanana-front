@@ -1,16 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Stage, Layer, Rect, Circle, Line, Transformer, Text } from "react-konva";
+import { Stage, Layer, Rect, Ellipse, Line, Transformer, Text } from "react-konva";
 import Konva from "konva";
 import "./Canvas.css";
+import {KonvaEventObject} from "konva/lib/Node";
 
 interface CanvasProps {
     activeTool: string;
     selectedColor: string;
     setActiveTool: (tool: string) => void;
     shapes: Shape[];
-    texts: TextItem[];
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
-    setTexts: React.Dispatch<React.SetStateAction<TextItem[]>>;
     currentSlide: number;
     updateThumbnail: (slideId: number, dataUrl: string) => void;
 }
@@ -25,10 +24,12 @@ interface Shape {
     radius?: number;
     points?: number[];
     color: string;
+    radiusX?: number;
+    radiusY?: number;
 }
 
-interface TextItem {
-    id: number;
+interface TextElement {
+    id: string;
     x: number;
     y: number;
     text: string;
@@ -60,21 +61,21 @@ const Canvas: React.FC<CanvasProps> = ({
                                            selectedColor,
                                            setActiveTool,
                                            shapes,
-                                           texts,
                                            setShapes,
-                                           setTexts,
                                            currentSlide,
                                            updateThumbnail,
                                        }) => {
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
-    const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
-    const [editingText, setEditingText] = useState<TextItem | null>(null);
+    const [texts, setTexts] = useState<TextElement[]>([]);
+    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState<TextElement | null>(null);
 
     const transformerRef = useRef<Konva.Transformer | null>(null);
     const shapeRefs = useRef<Map<number, Konva.Node>>(new Map());
-    const textRefs = useRef<Map<number, Konva.Text>>(new Map());
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const backgroundRef = useRef<Konva.Rect>(null);
     const stageRef = useRef<Konva.Stage>(null);
+
 
     useEffect(() => { // 썸넬용
         if (stageRef.current) {
@@ -133,36 +134,62 @@ const Canvas: React.FC<CanvasProps> = ({
     };
 
     const addText = (x: number, y: number) => {
-        if (activeTool !== "text") return;
-        const newText: TextItem = {
-            id: Date.now(),
+        const id = `text-${Date.now()}`;
+        const newText: TextElement = {
+            id,
+            text: "",
             x,
             y,
-            text: "",
-            color: selectedColor,
+            color: "#000000",
         };
-        setTexts((prev) => [...prev, newText]);
-        setSelectedTextId(newText.id);
-        setSelectedShapeId(null);
-        setEditingText(newText);
-        setActiveTool("cursor");
+
+        console.log("🆕 텍스트 객체 생성됨:", newText);
+
+        setTexts((prevTexts) => [...prevTexts, newText]);
+        setSelectedTextId(id);
+
+        // texts 상태가 먼저 업데이트되고 나서 editingText 설정
+        setTimeout(() => {
+            setEditingText(newText);
+        }, 0); // 다음 이벤트 루프로 밀어서 렌더링 이후 실행
     };
 
     useEffect(() => {
-        if (selectedShapeId !== null) {
-            setShapes((prev) =>
-                prev.map((shape) =>
-                    shape.id === selectedShapeId ? { ...shape, color: selectedColor } : shape
-                )
-            );
-        } else if (selectedTextId !== null) {
-            setTexts((prev) =>
-                prev.map((text) =>
-                    text.id === selectedTextId ? { ...text, color: selectedColor } : text
-                )
-            );
+        console.log("✏️ editingText가 설정됨:", editingText);
+        if (editingText && inputRef.current) {
+            inputRef.current.focus();
         }
-    }, [selectedColor]);
+    }, [editingText]);
+
+    const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+        // 도형 위를 클릭하면 아무것도 하지 않음
+        if (e.target !== backgroundRef.current) return;
+
+        const stage = stageRef.current;
+        const pointerPosition = stage?.getPointerPosition();
+
+        if (!pointerPosition) {
+            console.log("📛 pointerPosition이 없습니다.");
+            return;
+        }
+
+        const { x, y } = pointerPosition;
+        console.log("✅ 마우스 클릭 위치:", x, y);
+
+        if (activeTool === "text") {
+            console.log("🖋 텍스트 추가 트리거됨");
+            addText(x, y);
+        } else if (["rectangle", "circle", "triangle"].includes(activeTool)) {
+            addShape(x, y);
+        } else {
+            setSelectedShapeId(null);
+            setSelectedTextId(null);
+        }
+
+        setEditingText(null);
+    };
+
+
 
     const handleTransformEnd = (shapeId: number) => {
         const node = shapeRefs.current.get(shapeId);
@@ -185,7 +212,8 @@ const Canvas: React.FC<CanvasProps> = ({
                     updatedShape.width = (node.width() || 1) * scaleX;
                     updatedShape.height = (node.height() || 1) * scaleY;
                 } else if (shape.type === "circle") {
-                    updatedShape.radius = ((shape.radius || 50) * (scaleX + scaleY)) / 2;
+                    updatedShape.radiusX = (node.width() / 2) * scaleX;
+                    updatedShape.radiusY = (node.height() / 2) * scaleY;
                 } else if (shape.type === "triangle") {
                     const originalPoints = shape.points || drawTrianglePoints(0, 0);
                     updatedShape.points = originalPoints.map((point, index) =>
@@ -193,7 +221,6 @@ const Canvas: React.FC<CanvasProps> = ({
                     );
                 }
 
-                // scale 리셋!
                 node.scaleX(1);
                 node.scaleY(1);
 
@@ -258,18 +285,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 ref={stageRef}
                 width={1000}
                 height={563}
-                onMouseDown={(e) => {
-                    if (e.target === backgroundRef.current) {
-                        if (activeTool === "text") {
-                            addText(e.evt.layerX, e.evt.layerY);
-                        } else if (["rectangle", "circle", "triangle"].includes(activeTool)) {
-                            addShape(e.evt.layerX, e.evt.layerY);
-                        } else {
-                            setSelectedShapeId(null);
-                            setSelectedTextId(null);
-                        }
-                    }
-                }}
+                onMouseDown={handleMouseDown}
             >
                 <Layer>
                     <Rect width={1000} height={563} fill="white" ref={backgroundRef} />
@@ -299,11 +315,12 @@ const Canvas: React.FC<CanvasProps> = ({
                                 />
                             )}
                             {shape.type === "circle" && (
-                                <Circle
+                                <Ellipse
                                     ref={(node) => node && shapeRefs.current.set(shape.id, node)}
                                     x={shape.x!}
                                     y={shape.y!}
-                                    radius={shape.radius!}
+                                    radiusX={shape.radiusX ?? shape.radius ?? 50}
+                                    radiusY={shape.radiusY ?? shape.radius ?? 50}
                                     fill={shape.color}
                                     draggable
                                     onClick={() => {
@@ -318,6 +335,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                         );
                                     }}
                                 />
+
                             )}
                             {shape.type === "triangle" && (
                                 <Line
@@ -350,34 +368,32 @@ const Canvas: React.FC<CanvasProps> = ({
                     {texts.map((text) => (
                         <Text
                             key={text.id}
-                            ref={(node) => node && textRefs.current.set(text.id, node)}
                             x={text.x}
                             y={text.y}
                             text={text.text}
                             fontSize={20}
-                            fill={text.color || "#000"}
+                            fill={text.color}
                             draggable
                             onClick={() => {
                                 setSelectedTextId(text.id);
-                                setSelectedShapeId(null);
                                 setEditingText(text);
                             }}
                             onDragEnd={(e) => {
                                 const { x, y } = e.target.position();
                                 setTexts((prev) =>
-                                    prev.map((t) => (t.id === text.id ? { ...t, x, y } : t))
+                                    prev.map((t) =>
+                                        t.id === text.id ? { ...t, x, y } : t
+                                    )
                                 );
                             }}
                         />
                     ))}
 
-                    {selectedShapeId !== null && (
+                    {(selectedShapeId !== null || selectedTextId !== null) && (
                         <Transformer
                             ref={transformerRef}
-                            enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
                             boundBoxFunc={(oldBox, newBox) => {
-                                if (newBox.width < 5 || newBox.height < 5) return oldBox;
-                                return newBox;
+                                return newBox.width < 5 || newBox.height < 5 ? oldBox : newBox;
                             }}
                         />
                     )}
@@ -385,35 +401,45 @@ const Canvas: React.FC<CanvasProps> = ({
             </Stage>
 
             {editingText && (
-                <input
-                    type="text"
+                <textarea
+                    ref={inputRef}
                     value={editingText.text}
-                    autoFocus
                     style={{
                         position: "absolute",
                         top: editingText.y,
                         left: editingText.x,
                         fontSize: 20,
                         border: "1px solid #ccc",
-                        padding: "2px 4px",
-                        borderRadius: "4px",
+                        padding: "4px",
                         backgroundColor: "white",
-                        outline: "none",
+                        resize: "none",
+                        zIndex: 10,
                     }}
                     onChange={(e) => {
-                        const newText = e.target.value;
-                        setEditingText((prev) => prev && { ...prev, text: newText });
+                        const updated = e.target.value;
+                        setEditingText((prev) => prev && { ...prev, text: updated });
                         setTexts((prev) =>
-                            prev.map((text) =>
-                                text.id === editingText.id ? { ...text, text: newText } : text
+                            prev.map((t) =>
+                                t.id === editingText.id ? { ...t, text: updated } : t
                             )
                         );
                     }}
                     onBlur={() => {
+                        if (!editingText.text.trim()) {
+                            setTexts((prev) =>
+                                prev.filter((t) => t.id !== editingText.id)
+                            );
+                        }
                         setEditingText(null);
                     }}
                     onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            if (!editingText.text.trim()) {
+                                setTexts((prev) =>
+                                    prev.filter((t) => t.id !== editingText.id)
+                                );
+                            }
                             setEditingText(null);
                         }
                     }}
