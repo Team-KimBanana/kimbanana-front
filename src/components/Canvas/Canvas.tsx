@@ -10,6 +10,8 @@ interface CanvasProps {
     setActiveTool: (tool: string) => void;
     shapes: Shape[];
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
+    texts: TextElement[];
+    setTexts: React.Dispatch<React.SetStateAction<TextElement[]>>;
     currentSlide: number;
     updateThumbnail: (slideId: number, dataUrl: string) => void;
 }
@@ -29,7 +31,7 @@ interface Shape {
 }
 
 interface TextElement {
-    id: string;
+    id: number;
     x: number;
     y: number;
     text: string;
@@ -67,7 +69,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                        }) => {
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
     const [texts, setTexts] = useState<TextElement[]>([]);
-    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+    const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
     const [editingText, setEditingText] = useState<TextElement | null>(null);
 
     const transformerRef = useRef<Konva.Transformer | null>(null);
@@ -134,7 +136,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
 
     const addText = (x: number, y: number) => {
-        const id = `text-${Date.now()}`;
+        const id = Date.now();
         const newText: TextElement = {
             id,
             text: "",
@@ -143,7 +145,6 @@ const Canvas: React.FC<CanvasProps> = ({
             color: "#000000",
         };
 
-        console.log("🆕 텍스트 객체 생성됨:", newText);
 
         setTexts((prevTexts) => [...prevTexts, newText]);
         setSelectedTextId(id);
@@ -155,7 +156,6 @@ const Canvas: React.FC<CanvasProps> = ({
     };
 
     useEffect(() => {
-        console.log("✏️ editingText가 설정됨:", editingText);
         if (editingText && inputRef.current) {
             inputRef.current.focus();
         }
@@ -169,24 +169,21 @@ const Canvas: React.FC<CanvasProps> = ({
         const pointerPosition = stage?.getPointerPosition();
 
         if (!pointerPosition) {
-            console.log("📛 pointerPosition이 없습니다.");
             return;
         }
 
         const { x, y } = pointerPosition;
-        console.log("✅ 마우스 클릭 위치:", x, y);
 
         if (activeTool === "text") {
-            console.log("🖋 텍스트 추가 트리거됨");
             addText(x, y);
         } else if (["rectangle", "circle", "triangle"].includes(activeTool)) {
             addShape(x, y);
+            setEditingText(null);
         } else {
             setSelectedShapeId(null);
             setSelectedTextId(null);
+            setEditingText(null);
         }
-
-        setEditingText(null);
     };
 
 
@@ -278,6 +275,10 @@ const Canvas: React.FC<CanvasProps> = ({
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [selectedShapeId, selectedTextId]);
+
+    useEffect(() => {
+    }, [editingText]);
+
 
     return (
         <div className="whiteboard-container" style={{ position: "relative" }}>
@@ -372,6 +373,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             y={text.y}
                             text={text.text}
                             fontSize={20}
+                            fontFamily="monospace"
                             fill={text.color}
                             draggable
                             onClick={() => {
@@ -400,51 +402,99 @@ const Canvas: React.FC<CanvasProps> = ({
                 </Layer>
             </Stage>
 
-            {editingText && (
-                <textarea
-                    ref={inputRef}
-                    value={editingText.text}
-                    style={{
-                        position: "absolute",
-                        top: editingText.y,
-                        left: editingText.x,
-                        fontSize: 20,
-                        border: "1px solid #ccc",
-                        padding: "4px",
-                        backgroundColor: "white",
-                        resize: "none",
-                        zIndex: 10,
-                    }}
-                    onChange={(e) => {
-                        const updated = e.target.value;
-                        setEditingText((prev) => prev && { ...prev, text: updated });
-                        setTexts((prev) =>
-                            prev.map((t) =>
-                                t.id === editingText.id ? { ...t, text: updated } : t
-                            )
-                        );
-                    }}
-                    onBlur={() => {
-                        if (!editingText.text.trim()) {
+            {editingText && stageRef.current && (() => {
+                const stage = stageRef.current;
+                const transform = stage.getAbsoluteTransform();
+                const absPos = transform.point({
+                    x: editingText.x,
+                    y: editingText.y
+                });
+
+                const top = absPos.y;
+                const left = absPos.x;
+
+                // console.log("Canvas 좌표:", editingText.x, editingText.y);
+                // console.log("절대 변환 좌표:", absPos.x, absPos.y);
+                // console.log("textarea top/left:", top, left);
+
+
+                return (
+                    <textarea
+                        ref={inputRef}
+                        value={editingText.text}
+                        style={{
+                            position: "absolute",
+                            top,
+                            left,
+                            fontSize: "20px",
+                            fontFamily: "monospace",
+                            lineHeight: "0.82",
+                            whiteSpace: "pre",
+                            padding: "0",
+                            margin: "0",
+                            border: "none",
+                            background: "transparent",
+                            outline: "none",
+                            resize: "none",
+                            overflow: "hidden",
+                            verticalAlign: "top",
+                            color: editingText.color,
+                            zIndex: 10,
+                        }}
+                        onChange={(e) => {
+                            const updated = e.target.value;
+                            setEditingText((prev) => prev && { ...prev, text: updated });
                             setTexts((prev) =>
-                                prev.filter((t) => t.id !== editingText.id)
+                                prev.map((t) =>
+                                    t.id === editingText.id ? { ...t, text: updated } : t
+                                )
                             );
-                        }
-                        setEditingText(null);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
+                        }}
+                        onBlur={() => {
                             if (!editingText.text.trim()) {
                                 setTexts((prev) =>
                                     prev.filter((t) => t.id !== editingText.id)
                                 );
                             }
                             setEditingText(null);
-                        }
-                    }}
-                />
-            )}
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Backspace" && !editingText.text) {
+                                e.preventDefault();
+
+                                // 텍스트 삭제
+                                setTexts((prev) =>
+                                    prev.filter((t) => t.id !== editingText.id)
+                                );
+
+                                // 입력창 닫기
+                                setEditingText(null);
+
+                                // 선택도 해제
+                                setSelectedTextId(null);
+
+                                // 도구 커서로 전환
+                                setActiveTool("cursor");
+                            }
+
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+
+                                if (!editingText.text.trim()) {
+                                    setTexts((prev) =>
+                                        prev.filter((t) => t.id !== editingText.id)
+                                    );
+                                }
+
+                                setEditingText(null);
+                                setSelectedTextId(null);
+                                setActiveTool("cursor");
+                            }
+                        }}
+
+                    />
+                );
+            })()}
         </div>
     );
 };
