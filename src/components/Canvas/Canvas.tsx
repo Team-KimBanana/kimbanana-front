@@ -427,7 +427,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             top,
                             left,
                             fontSize: "20px",
-                            fontFamily: "monospace",
+                            // fontFamily: "'Courier New', Courier, monospace",
                             lineHeight: "0.82",
                             whiteSpace: "pre",
                             padding: "0",
