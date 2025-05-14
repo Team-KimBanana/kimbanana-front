@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Stage, Layer, Rect, Ellipse, Line, Transformer, Text } from "react-konva";
+import { Shape, TextItem} from "../../types/types.ts";
 import Konva from "konva";
 import "./Canvas.css";
 import {KonvaEventObject} from "konva/lib/Node";
@@ -10,32 +11,12 @@ interface CanvasProps {
     setActiveTool: (tool: string) => void;
     shapes: Shape[];
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
-    texts: TextElement[];
-    setTexts: React.Dispatch<React.SetStateAction<TextElement[]>>;
+    texts: TextItem[];
+    setTexts: React.Dispatch<React.SetStateAction<TextItem[]>>;
     currentSlide: number;
     updateThumbnail: (slideId: number, dataUrl: string) => void;
-}
+    sendEdit: () => void;
 
-interface Shape {
-    id: number;
-    type: "rectangle" | "circle" | "triangle";
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    radius?: number;
-    points?: number[];
-    color: string;
-    radiusX?: number;
-    radiusY?: number;
-}
-
-interface TextElement {
-    id: number;
-    x: number;
-    y: number;
-    text: string;
-    color: string;
 }
 
 const drawTrianglePoints = (
@@ -64,13 +45,15 @@ const Canvas: React.FC<CanvasProps> = ({
                                            setActiveTool,
                                            shapes,
                                            setShapes,
+                                           texts,
+                                           setTexts,
                                            currentSlide,
                                            updateThumbnail,
+                                           sendEdit,
                                        }) => {
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
-    const [texts, setTexts] = useState<TextElement[]>([]);
     const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
-    const [editingText, setEditingText] = useState<TextElement | null>(null);
+    const [editingText, setEditingText] = useState<TextItem | null>(null);
 
     const transformerRef = useRef<Konva.Transformer | null>(null);
     const shapeRefs = useRef<Map<number, Konva.Node>>(new Map());
@@ -128,16 +111,24 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         if (newShape) {
-            setShapes((prev) => [...prev, newShape]);
+            setShapes((prev) => {
+                return [...prev, newShape];
+            });
+
             setSelectedShapeId(newShape.id);
             setSelectedTextId(null);
-            setActiveTool("cursor");
+
+            setTimeout(() => {
+                setActiveTool("cursor");
+            }, 0);
         }
+
+
     };
 
     const addText = (x: number, y: number) => {
         const id = Date.now();
-        const newText: TextElement = {
+        const newText: TextItem = {
             id,
             text: "",
             x,
@@ -145,15 +136,20 @@ const Canvas: React.FC<CanvasProps> = ({
             color: "#000000",
         };
 
+        setTexts((prev) => {
+            return [...prev, newText];;
+        });
 
-        setTexts((prevTexts) => [...prevTexts, newText]);
         setSelectedTextId(id);
-
-        // texts 상태가 먼저 업데이트되고 나서 editingText 설정
-        setTimeout(() => {
-            setEditingText(newText);
-        }, 0); // 다음 이벤트 루프로 밀어서 렌더링 이후 실행
     };
+
+    useEffect(() => {
+        // 가장 최근에 추가된 텍스트로 editingText 설정
+        if (activeTool === "text" && texts.length > 0) {
+            const latest = texts[texts.length - 1];
+            setEditingText(latest);
+        }
+    }, [texts]);
 
     useEffect(() => {
         if (editingText && inputRef.current) {
@@ -186,8 +182,6 @@ const Canvas: React.FC<CanvasProps> = ({
         }
     };
 
-
-
     const handleTransformEnd = (shapeId: number) => {
         const node = shapeRefs.current.get(shapeId);
         if (!node) return;
@@ -195,25 +189,27 @@ const Canvas: React.FC<CanvasProps> = ({
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
 
+        let updatedShape: Shape | null = null;
+
         setShapes((prev) =>
             prev.map((shape) => {
                 if (shape.id !== shapeId) return shape;
 
-                const updatedShape: Shape = {
+                const newShape: Shape = {
                     ...shape,
                     x: node.x(),
                     y: node.y(),
                 };
 
                 if (shape.type === "rectangle") {
-                    updatedShape.width = (node.width() || 1) * scaleX;
-                    updatedShape.height = (node.height() || 1) * scaleY;
+                    newShape.width = node.width() * scaleX;
+                    newShape.height = node.height() * scaleY;
                 } else if (shape.type === "circle") {
-                    updatedShape.radiusX = (node.width() / 2) * scaleX;
-                    updatedShape.radiusY = (node.height() / 2) * scaleY;
+                    newShape.radiusX = (node.width() / 2) * scaleX;
+                    newShape.radiusY = (node.height() / 2) * scaleY;
                 } else if (shape.type === "triangle") {
                     const originalPoints = shape.points || drawTrianglePoints(0, 0);
-                    updatedShape.points = originalPoints.map((point, index) =>
+                    newShape.points = originalPoints.map((point, index) =>
                         index % 2 === 0 ? point * scaleX : point * scaleY
                     );
                 }
@@ -221,10 +217,16 @@ const Canvas: React.FC<CanvasProps> = ({
                 node.scaleX(1);
                 node.scaleY(1);
 
-                return updatedShape;
+                updatedShape = newShape;
+                return newShape;
             })
         );
+
+        if (updatedShape) {
+            sendEdit();
+        }
     };
+
 
 
     useEffect(() => {
@@ -258,10 +260,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const deleteShape = () => {
         if (selectedShapeId !== null) {
-            setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId));
+            setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId))
+            sendEdit();
             setSelectedShapeId(null);
         } else if (selectedTextId !== null) {
             setTexts((prev) => prev.filter((text) => text.id !== selectedTextId));
+            sendEdit();
             setSelectedTextId(null);
         }
     };
@@ -276,8 +280,13 @@ const Canvas: React.FC<CanvasProps> = ({
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [selectedShapeId, selectedTextId]);
 
-    useEffect(() => {
-    }, [editingText]);
+    const isDraggableShape = (id: number) => {
+        return activeTool === "cursor" && selectedShapeId === id;
+    };
+
+    const isDraggableText = (id: number) => {
+        return activeTool === "cursor" && selectedTextId === id && editingText?.id !== id;
+    };
 
 
     return (
@@ -301,19 +310,31 @@ const Canvas: React.FC<CanvasProps> = ({
                                     width={shape.width!}
                                     height={shape.height!}
                                     fill={shape.color}
-                                    draggable
+                                    onTransformEnd={() => handleTransformEnd(shape.id)}
+                                    draggable={isDraggableShape(shape.id)}
                                     onClick={() => {
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
+                                        setActiveTool("cursor");
                                     }}
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
-                                        setShapes((prev) =>
-                                            prev.map((s) => (s.id === shape.id ? { ...s, x, y } : s))
-                                        );
+
+                                        const updatedShape = { ...shape, x, y };
+
+                                        setShapes((prev) => {
+                                            const updated = prev.map((s) =>
+                                                s.id === shape.id ? updatedShape : s
+                                            );
+                                            setTimeout(() => sendEdit(), 0);
+                                            return updated;
+                                        });
+
+
+                                        e.target.getLayer()?.batchDraw();
                                     }}
                                 />
+
                             )}
                             {shape.type === "circle" && (
                                 <Ellipse
@@ -323,17 +344,28 @@ const Canvas: React.FC<CanvasProps> = ({
                                     radiusX={shape.radiusX ?? shape.radius ?? 50}
                                     radiusY={shape.radiusY ?? shape.radius ?? 50}
                                     fill={shape.color}
-                                    draggable
+                                    onTransformEnd={() => handleTransformEnd(shape.id)}
+                                    draggable={isDraggableShape(shape.id)}
                                     onClick={() => {
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
+                                        setActiveTool("cursor");
                                     }}
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
-                                        setShapes((prev) =>
-                                            prev.map((s) => (s.id === shape.id ? { ...s, x, y } : s))
-                                        );
+
+                                        const updatedShape = { ...shape, x, y };
+
+                                        setShapes((prev) => {
+                                            const updated = prev.map((s) =>
+                                                s.id === shape.id ? updatedShape : s
+                                            );
+                                            setTimeout(() => sendEdit(), 0);
+                                            return updated;
+                                        });
+
+
+                                        e.target.getLayer()?.batchDraw();
                                     }}
                                 />
 
@@ -346,19 +378,27 @@ const Canvas: React.FC<CanvasProps> = ({
                                     points={shape.points!}
                                     fill={shape.color}
                                     closed
-                                    draggable
+                                    onTransformEnd={() => handleTransformEnd(shape.id)}
+                                    draggable={isDraggableShape(shape.id)}
                                     onClick={() => {
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
+                                        setActiveTool("cursor");
                                     }}
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
-                                        setShapes((prev) =>
-                                            prev.map((s) =>
-                                                s.id === shape.id ? { ...s, x, y } : s
-                                            )
-                                        );
+
+                                        const updatedShape = { ...shape, x, y };
+
+                                        setShapes((prev) => {
+                                            const updated = prev.map((s) =>
+                                                s.id === shape.id ? updatedShape : s
+                                            );
+                                            setTimeout(() => sendEdit(), 0);
+                                            return updated;
+                                        });
+
+                                        e.target.getLayer()?.batchDraw();
                                     }}
                                 />
 
@@ -375,20 +415,29 @@ const Canvas: React.FC<CanvasProps> = ({
                             fontSize={20}
                             fontFamily="monospace"
                             fill={text.color}
-                            draggable
+                            draggable={isDraggableText(text.id)}
                             onClick={() => {
                                 setSelectedTextId(text.id);
+                                setActiveTool("cursor");
+                            }}
+                            onDblClick={() => {
                                 setEditingText(text);
                             }}
                             onDragEnd={(e) => {
                                 const { x, y } = e.target.position();
-                                setTexts((prev) =>
-                                    prev.map((t) =>
-                                        t.id === text.id ? { ...t, x, y } : t
-                                    )
-                                );
+                                const updatedText = { ...text, x, y };
+                                setTexts((prev) => {
+                                    const updated = prev.map((t) =>
+                                        t.id === text.id ? updatedText : t
+                                    );
+                                    setTimeout(() => sendEdit(), 0);
+                                    return updated;
+                                });
+
+                                e.target.getLayer()?.batchDraw();
                             }}
                         />
+
                     ))}
 
                     {(selectedShapeId !== null || selectedTextId !== null) && (
@@ -449,6 +498,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                     t.id === editingText.id ? { ...t, text: updated } : t
                                 )
                             );
+                            sendEdit();
                         }}
                         onBlur={() => {
                             if (!editingText.text.trim()) {

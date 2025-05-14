@@ -1,45 +1,109 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { Client, StompSubscription} from "@stomp/stompjs";
+
 import Header from "./Header/Header";
 import Sidebar from "./Sidebar/Sidebar";
 import Canvas from "./Canvas/Canvas";
 import Toolbar from "./Toolbar/Toolbar";
+
+import { Shape, TextItem } from "../types/types";
 import "./MainLayout.css";
 
-interface Shape {
-    id: number;
-    type: "rectangle" | "circle" | "triangle";
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    radius?: number;
-    points?: number[];
-    color: string;
-}
-
-interface TextItem {
-    id: number;
-    x: number;
-    y: number;
-    text: string;
-    color: string;
-}
+const presentationId = "p_19025";
 
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<number[]>([1]);
     const [currentSlide, setCurrentSlide] = useState<number>(1);
-    const [slideData, setSlideData] = useState<{ [key: number]: { shapes: Shape[]; texts: TextItem[] } }>({
+    const [slideData, setSlideData] = useState<{
+        [key: number]: { shapes: Shape[]; texts: TextItem[] };
+    }>({
         1: { shapes: [], texts: [] },
     });
     const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
+    const [isTyping, setIsTyping] = useState<boolean>(false);
 
+    const stompClientRef = useRef<Client | null>(null);
+    const subscriptionRef = useRef<StompSubscription | null>(null);
+    const senderId = useRef<string>(crypto.randomUUID());
 
     useEffect(() => {
-        console.log("현재 선택된 도구:", activeTool);
-        console.log("현재 선택된 색상:", selectedColor);
-    }, [activeTool, selectedColor]);
+        const client = new Client({
+            brokerURL: "ws://localhost:8080/ws-api",
+            reconnectDelay: 5000,
+        });
+
+        client.onConnect = () => {
+            console.log("✅ STOMP 연결됨");
+            subscribeToSlide(client, currentSlide);
+        };
+
+        client.activate();
+        stompClientRef.current = client;
+
+        return () => {
+            client.deactivate();
+        };
+    }, []);
+
+    useEffect(() => {
+        const client = stompClientRef.current;
+        if (client && client.connected) {
+            subscriptionRef.current?.unsubscribe();
+            subscribeToSlide(client, currentSlide);
+        }
+    }, [currentSlide]);
+
+    const subscribeToSlide = (client: Client, slideNumber: number) => {
+        const topic = `/topic/presentation.${presentationId}.slide.slide-${slideNumber}`;
+        console.log("🔔 구독 시작:", topic);
+
+        subscriptionRef.current = client.subscribe(topic, (message) => {
+            const parsed = JSON.parse(message.body);
+            if (parsed.senderId === senderId.current) return;
+
+            const data = parsed.data;
+            const slideId = parseInt(parsed.slideId.replace("slide-", ""));
+
+            console.log("📥 수신 메시지:", parsed);
+
+            setSlideData((prev) => ({
+                ...prev,
+                [slideId]: {
+                    shapes: data.shapes || [],
+                    texts: data.texts || [],
+                },
+            }));
+        });
+    };
+
+    const broadcastFullSlideFromData = (
+        data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
+    ) => {
+        if (isTyping) return;
+
+        const current = data[currentSlide];
+        const payload = {
+            slideId: `slide-${currentSlide}`,
+            presentationId,
+            lastRevisionDate: new Date().toISOString(),
+            lastRevisionUserId: "admin",
+            order: currentSlide,
+            senderId: senderId.current,
+            data: {
+                shapes: current?.shapes || [],
+                texts: current?.texts || [],
+            },
+        };
+
+        console.log("📤 WebSocket 전송:", payload);
+
+        stompClientRef.current?.publish({
+            destination: `/app/slide.edit.presentation.${presentationId}.slide.slide-${currentSlide}`,
+            body: JSON.stringify(payload),
+        });
+    };
 
     const handleAddSlide = () => {
         const newSlideNum = slides.length + 1;
@@ -51,26 +115,50 @@ const MainLayout: React.FC = () => {
         setCurrentSlide(newSlideNum);
     };
 
-    const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
-        setSlideData((prev) => ({
-            ...prev,
-            [currentSlide]: {
-                ...prev[currentSlide],
-                shapes: typeof newShapes === 'function' ? newShapes(prev[currentSlide]?.shapes || []) : newShapes,
-                texts: prev[currentSlide]?.texts || [],
-            },
-        }));
+    const updateShapes = (
+        newShapes: Shape[] | ((prev: Shape[]) => Shape[])
+    ) => {
+        setSlideData((prev) => {
+            const updatedShapes =
+                typeof newShapes === "function"
+                    ? newShapes(prev[currentSlide]?.shapes || [])
+                    : newShapes;
+
+            const newData = {
+                ...prev,
+                [currentSlide]: {
+                    ...prev[currentSlide],
+                    shapes: updatedShapes,
+                    texts: prev[currentSlide]?.texts || [],
+                },
+            };
+
+            setTimeout(() => broadcastFullSlideFromData(newData), 0);
+            return newData;
+        });
     };
 
-    const updateTexts = (newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])) => {
-        setSlideData((prev) => ({
-            ...prev,
-            [currentSlide]: {
-                ...prev[currentSlide],
-                texts: typeof newTexts === 'function' ? newTexts(prev[currentSlide]?.texts || []) : newTexts,
-                shapes: prev[currentSlide]?.shapes || [],
-            },
-        }));
+    const updateTexts = (
+        newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])
+    ) => {
+        setSlideData((prev) => {
+            const updatedTexts =
+                typeof newTexts === "function"
+                    ? newTexts(prev[currentSlide]?.texts || [])
+                    : newTexts;
+
+            const newData = {
+                ...prev,
+                [currentSlide]: {
+                    ...prev[currentSlide],
+                    texts: updatedTexts,
+                    shapes: prev[currentSlide]?.shapes || [],
+                },
+            };
+
+            setTimeout(() => broadcastFullSlideFromData(newData), 0);
+            return newData;
+        });
     };
 
     return (
@@ -91,12 +179,14 @@ const MainLayout: React.FC = () => {
                         setActiveTool={setActiveTool}
                         shapes={slideData[currentSlide]?.shapes || []}
                         texts={slideData[currentSlide]?.texts || []}
-                        setShapes={updateShapes}
-                        setTexts={updateTexts}
+                        setShapes={(updater) => updateShapes(updater)}
+                        setTexts={(updater) => updateTexts(updater)}
                         currentSlide={currentSlide}
                         updateThumbnail={(slideId, dataUrl) =>
                             setThumbnails((prev) => ({ ...prev, [slideId]: dataUrl }))
                         }
+                        sendEdit={() => broadcastFullSlideFromData(slideData)}
+                        setIsTyping={setIsTyping}
                     />
                     <Toolbar
                         activeTool={activeTool}
