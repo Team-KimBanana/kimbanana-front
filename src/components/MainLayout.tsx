@@ -26,16 +26,16 @@ const MainLayout: React.FC = () => {
 
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
-    const senderId = useRef<string>(crypto.randomUUID());
+    const senderId = useRef<string>();
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://localhost:8080/ws-api",
+            brokerURL: "ws://192.168.50.104:8080/ws-api",
             reconnectDelay: 5000,
         });
 
         client.onConnect = () => {
-            console.log("✅ STOMP 연결됨");
+            console.log("웹소켓 연결됨");
             subscribeToSlide(client, currentSlide);
         };
 
@@ -57,16 +57,15 @@ const MainLayout: React.FC = () => {
 
     const subscribeToSlide = (client: Client, slideNumber: number) => {
         const topic = `/topic/presentation.${presentationId}.slide.slide-${slideNumber}`;
-        console.log("🔔 구독 시작:", topic);
+        console.log("구독 시작:", topic);
 
         subscriptionRef.current = client.subscribe(topic, (message) => {
             const parsed = JSON.parse(message.body);
-            if (parsed.senderId === senderId.current) return;
 
             const data = parsed.data;
             const slideId = parseInt(parsed.slideId.replace("slide-", ""));
 
-            console.log("📥 수신 메시지:", parsed);
+            console.log("수신 메시지:", parsed);
 
             setSlideData((prev) => ({
                 ...prev,
@@ -97,7 +96,7 @@ const MainLayout: React.FC = () => {
             },
         };
 
-        console.log("📤 WebSocket 전송:", payload);
+        console.log("WebSocket 전송:", payload);
 
         stompClientRef.current?.publish({
             destination: `/app/slide.edit.presentation.${presentationId}.slide.slide-${currentSlide}`,
