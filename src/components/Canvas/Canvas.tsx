@@ -277,13 +277,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Backspace") {
+            if (event.key === "Backspace" || event.key === "Delete") {
+                if (document.activeElement?.tagName === "TEXTAREA") return;
+
                 deleteShape();
             }
         };
+
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [selectedShapeId, selectedTextId]);
+
 
     const isDraggableShape = (id: number) => {
         return activeTool === "cursor" && selectedShapeId === id;
@@ -501,9 +505,7 @@ const Canvas: React.FC<CanvasProps> = ({
                         onChange={(e) => {
                             const updated = e.target.value;
 
-                            setEditingText((prev) =>
-                                prev ? { ...prev, text: updated } : null
-                            );
+                            setEditingText((prev) => (prev ? { ...prev, text: updated } : null));
 
                             if (isComposing) return;
 
@@ -514,42 +516,39 @@ const Canvas: React.FC<CanvasProps> = ({
                             );
 
                             setIsTyping(true);
-                            if (typingTimeout.current) {
-                                clearTimeout(typingTimeout.current);
-                            }
-                            typingTimeout.current = setTimeout(() => {
-                                setIsTyping(false);
-                            }, 500);
+                            if (typingTimeout.current) clearTimeout(typingTimeout.current);
+                            typingTimeout.current = setTimeout(() => setIsTyping(false), 500);
 
                             sendEdit();
                         }}
 
                         onBlur={() => {
-                            setIsTyping(false);
+                            const trimmed = editingText?.text.trim() || "";
 
-                            if (!editingText?.text.trim()) {
+                            if (trimmed === "") {
                                 setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
+                            } else {
+                                setTexts((prev) =>
+                                    prev.map((t) =>
+                                        t.id === editingText.id ? { ...t, text: trimmed } : t
+                                    )
+                                );
+                                sendEdit(); // ⬅️ 저장 로직 추가
                             }
+
 
                             setEditingText(null);
                             setSelectedTextId(null);
                         }}
 
-                        onKeyDown={(e) => {
-                            if (e.key === "Backspace" && !editingText?.text) {
-                                e.preventDefault();
-                                setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
-                                setEditingText(null);
-                                setSelectedTextId(null);
-                                setActiveTool("cursor");
-                            }
 
+                        onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
 
                                 const trimmed = inputRef.current?.value.trim() || "";
 
-                                if (!trimmed) {
+                                if (trimmed === "") {
                                     setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
                                 } else {
                                     setTexts((prev) =>
