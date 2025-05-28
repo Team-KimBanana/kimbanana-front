@@ -23,14 +23,14 @@ const MainLayout: React.FC = () => {
     });
     const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
     const [isTyping, setIsTyping] = useState<boolean>(false);
-
+    const [defaultFontSize, setDefaultFontSize] = useState(20);
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
     const senderId = useRef<string>();
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://192.168.50.104:8080/ws-api",
+            brokerURL: "ws://192.168.0.83:8080/ws-api",
             reconnectDelay: 5000,
         });
 
@@ -186,11 +186,14 @@ const MainLayout: React.FC = () => {
                         }
                         sendEdit={() => broadcastFullSlideFromData(slideData)}
                         setIsTyping={setIsTyping}
+                        defaultFontSize={defaultFontSize}
                     />
                     <Toolbar
                         activeTool={activeTool}
                         setActiveTool={setActiveTool}
                         setSelectedColor={setSelectedColor}
+                        defaultFontSize={defaultFontSize}
+                        setDefaultFontSize={setDefaultFontSize}
                     />
                 </div>
             </div>

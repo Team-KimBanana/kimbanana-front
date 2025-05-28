@@ -1,43 +1,54 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./Toolbar.css";
+import { Icon } from '@iconify/react';
 
 interface ToolbarProps {
     setActiveTool: (tool: string) => void;
     activeTool: string;
     setSelectedColor: (color: string) => void;
+    defaultFontSize: number;
+    setDefaultFontSize: (size: number) => void;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelectedColor }) => {
+const Toolbar: React.FC<ToolbarProps> = ({
+                                             setActiveTool,
+                                             activeTool,
+                                             setSelectedColor,
+                                             defaultFontSize,
+                                             setDefaultFontSize
+                                         }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
+    const [isTextMenuOpen, setIsTextMenuOpen] = useState(false);
+
     const shapeMenuRef = useRef<HTMLDivElement | null>(null);
     const colorMenuRef = useRef<HTMLDivElement | null>(null);
+    const textMenuRef = useRef<HTMLDivElement | null>(null);
 
     const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#000000"];
 
-    const toggleShapeMenu = () => setIsShapeMenuOpen((prev) => !prev);
-    const toggleColorMenu = () => setIsColorMenuOpen((prev) => !prev);
-
-    // 메뉴 바깥 클릭 시 닫기
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (shapeMenuRef.current && !shapeMenuRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+
+            if (shapeMenuRef.current && !shapeMenuRef.current.contains(target)) {
                 setIsShapeMenuOpen(false);
             }
-            if (colorMenuRef.current && !colorMenuRef.current.contains(event.target as Node)) {
+            if (colorMenuRef.current && !colorMenuRef.current.contains(target)) {
                 setIsColorMenuOpen(false);
+            }
+            if (textMenuRef.current && !textMenuRef.current.contains(target)) {
+                setIsTextMenuOpen(false);
             }
         };
 
         document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     const tools = [
         { name: "cursor", icon: "/assets/toolIcon/cursor.svg" },
-        { name: "text", icon: "/assets/toolIcon/text.svg" },
+        { name: "text", icon: "/assets/toolIcon/text.svg", isTextButton: true },
         { name: "shapes", icon: "/assets/toolIcon/shapes.svg", isShapeButton: true },
         { name: "color", icon: "/assets/toolIcon/color.svg", isColorButton: true },
         { name: "pen", icon: "/assets/toolIcon/pen.svg" },
@@ -50,7 +61,10 @@ const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelecte
                 if (tool.isShapeButton) {
                     return (
                         <div className="shape-dropdown" key={tool.name}>
-                            <button className={`toolbar-btn ${isShapeMenuOpen ? "active" : ""}`} onClick={toggleShapeMenu}>
+                            <button className={`toolbar-btn ${isShapeMenuOpen ? "active" : ""}`} onClick={() => {
+                                setIsShapeMenuOpen((prev) => !prev);
+                                setActiveTool("shapes");
+                            }}>
                                 <img src={tool.icon} alt="Shapes" />
                             </button>
 
@@ -75,7 +89,10 @@ const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelecte
                 } else if (tool.isColorButton) {
                     return (
                         <div className="color-dropdown" key={tool.name}>
-                            <button className={`toolbar-btn ${isColorMenuOpen ? "active" : ""}`} onClick={toggleColorMenu}>
+                            <button className={`toolbar-btn ${isColorMenuOpen ? "active" : ""}`} onClick={() => {
+                                setIsColorMenuOpen((prev) => !prev);
+                                setActiveTool("color");
+                            }}>
                                 <img src={tool.icon} alt="Color" />
                             </button>
 
@@ -96,6 +113,33 @@ const Toolbar: React.FC<ToolbarProps> = ({ setActiveTool, activeTool, setSelecte
                                             }}
                                         />
                                     ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                } else if (tool.isTextButton) {
+                    return (
+                        <div className="text-dropdown" key={tool.name}>
+                            <button className={`toolbar-btn ${isTextMenuOpen ? "active" : ""}`} onClick={() => {
+                                setIsTextMenuOpen((prev) => !prev);
+                                setActiveTool("text");
+                            }}>
+                                <img src={tool.icon} alt="Text" />
+                            </button>
+
+                            {isTextMenuOpen && (
+                                <div className="text-menu" ref={textMenuRef}>
+                                    <Icon icon="mdi:format-size" width="18" height="18" />
+                                    <select
+                                        value={defaultFontSize}
+                                        onChange={(e) => setDefaultFontSize(parseInt(e.target.value, 10))}
+                                    >
+                                        {[12, 14, 16, 18, 20, 24, 28, 32].map((size) => (
+                                            <option key={size} value={size}>
+                                                {size}px
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
                         </div>

@@ -16,7 +16,8 @@ interface CanvasProps {
     currentSlide: number;
     updateThumbnail: (slideId: number, dataUrl: string) => void;
     sendEdit: () => void;
-
+    setIsTyping: (typing: boolean) => void;
+    defaultFontSize: number;
 }
 
 const drawTrianglePoints = (
@@ -50,16 +51,19 @@ const Canvas: React.FC<CanvasProps> = ({
                                            currentSlide,
                                            updateThumbnail,
                                            sendEdit,
+                                           setIsTyping,
+                                           defaultFontSize,
                                        }) => {
+    const [isComposing, setIsComposing] = useState(false);
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
     const [editingText, setEditingText] = useState<TextItem | null>(null);
-
     const transformerRef = useRef<Konva.Transformer | null>(null);
     const shapeRefs = useRef<Map<number, Konva.Node>>(new Map());
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const backgroundRef = useRef<Konva.Rect>(null);
     const stageRef = useRef<Konva.Stage>(null);
+    const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
 
     useEffect(() => { // 썸넬용
@@ -134,6 +138,7 @@ const Canvas: React.FC<CanvasProps> = ({
             x,
             y,
             color: "#000000",
+            fontSize: defaultFontSize,
         };
 
         setTexts((prev) => {
@@ -412,8 +417,8 @@ const Canvas: React.FC<CanvasProps> = ({
                             x={text.x}
                             y={text.y}
                             text={text.text}
-                            fontSize={20}
-                            fontFamily="monospace"
+                            fontSize={text.fontSize || 20}
+                            fontFamily="Noto Sans KR"
                             fill={text.color}
                             draggable={isDraggableText(text.id)}
                             onClick={() => {
@@ -475,8 +480,8 @@ const Canvas: React.FC<CanvasProps> = ({
                             position: "absolute",
                             top,
                             left,
-                            fontSize: "20px",
-                            // fontFamily: "'Courier New', Courier, monospace",
+                            fontSize: `${editingText.fontSize || defaultFontSize}px`,
+                            fontFamily: "'Noto Sans KR'",
                             lineHeight: "0.82",
                             whiteSpace: "pre",
                             padding: "0",
@@ -490,49 +495,67 @@ const Canvas: React.FC<CanvasProps> = ({
                             color: editingText.color,
                             zIndex: 10,
                         }}
+                        onCompositionStart={() => setIsComposing(true)}
+                        onCompositionEnd={() => setIsComposing(false)}
+
                         onChange={(e) => {
                             const updated = e.target.value;
-                            setEditingText((prev) => prev && { ...prev, text: updated });
+
+                            setEditingText((prev) =>
+                                prev ? { ...prev, text: updated } : null
+                            );
+
+                            if (isComposing) return;
+
                             setTexts((prev) =>
                                 prev.map((t) =>
                                     t.id === editingText.id ? { ...t, text: updated } : t
                                 )
                             );
+
+                            setIsTyping(true);
+                            if (typingTimeout.current) {
+                                clearTimeout(typingTimeout.current);
+                            }
+                            typingTimeout.current = setTimeout(() => {
+                                setIsTyping(false);
+                            }, 500);
+
                             sendEdit();
                         }}
+
                         onBlur={() => {
-                            if (!editingText.text.trim()) {
-                                setTexts((prev) =>
-                                    prev.filter((t) => t.id !== editingText.id)
-                                );
+                            setIsTyping(false);
+
+                            if (!editingText?.text.trim()) {
+                                setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
                             }
+
                             setEditingText(null);
+                            setSelectedTextId(null);
                         }}
+
                         onKeyDown={(e) => {
-                            if (e.key === "Backspace" && !editingText.text) {
+                            if (e.key === "Backspace" && !editingText?.text) {
                                 e.preventDefault();
-
-                                // 텍스트 삭제
-                                setTexts((prev) =>
-                                    prev.filter((t) => t.id !== editingText.id)
-                                );
-
-                                // 입력창 닫기
+                                setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
                                 setEditingText(null);
-
-                                // 선택도 해제
                                 setSelectedTextId(null);
-
-                                // 도구 커서로 전환
                                 setActiveTool("cursor");
                             }
 
                             if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
 
-                                if (!editingText.text.trim()) {
+                                const trimmed = inputRef.current?.value.trim() || "";
+
+                                if (!trimmed) {
+                                    setTexts((prev) => prev.filter((t) => t.id !== editingText.id));
+                                } else {
                                     setTexts((prev) =>
-                                        prev.filter((t) => t.id !== editingText.id)
+                                        prev.map((t) =>
+                                            t.id === editingText.id ? { ...t, text: trimmed } : t
+                                        )
                                     );
                                 }
 

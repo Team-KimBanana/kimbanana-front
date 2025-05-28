@@ -18,6 +18,7 @@ export interface TextItem {
     y: number;
     text: string;
     color: string;
+    fontSize?: number;
 }
 
 export type EditPayload =
