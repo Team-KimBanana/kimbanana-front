@@ -25,7 +25,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
     const colorMenuRef = useRef<HTMLDivElement | null>(null);
     const textMenuRef = useRef<HTMLDivElement | null>(null);
 
-    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#000000"];
+    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#000000","#D86868", "#CFA37A", "#4399B5", "#476C96" ];
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -134,7 +134,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                         value={defaultFontSize}
                                         onChange={(e) => setDefaultFontSize(parseInt(e.target.value, 10))}
                                     >
-                                        {[12, 14, 16, 18, 20, 24, 28, 32].map((size) => (
+                                        {[18, 24, 32, 48, 64, 96, 128].map((size) => (
                                             <option key={size} value={size}>
                                                 {size}px
                                             </option>

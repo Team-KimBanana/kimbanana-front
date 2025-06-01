@@ -30,7 +30,7 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://192.168.0.83:8080/ws-api",
+            brokerURL: "ws://192.168.0.33:8080/ws-api",
             reconnectDelay: 5000,
         });
 
