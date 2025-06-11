@@ -26,7 +26,7 @@ const MainLayout: React.FC = () => {
     const [defaultFontSize, setDefaultFontSize] = useState(20);
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
-    const senderId = useRef<string>();
+    const senderId = useRef<string>()
 
     useEffect(() => {
         const client = new Client({
@@ -114,6 +114,47 @@ const MainLayout: React.FC = () => {
         setCurrentSlide(newSlideNum);
     };
 
+    const handleDeleteSlide = (slideNum: number) => {
+        if (slides.length === 1) return;
+
+        const newSlides = slides.filter((s) => s !== slideNum);
+        const newSlideData = { ...slideData };
+        delete newSlideData[slideNum];
+
+        setSlides(newSlides);
+        setSlideData(newSlideData);
+
+        if (currentSlide === slideNum) {
+            const index = slides.indexOf(slideNum);
+            const nextSlide = newSlides[Math.max(0, index - 1)];
+            setCurrentSlide(nextSlide);
+        }
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (
+                e.key === "Backspace" &&
+                !isTyping &&
+                slides.length > 1
+            ) {
+                e.preventDefault();
+                handleDeleteSlide(currentSlide);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [currentSlide, slides, isTyping]);
+
+
+    const handleReorderSlides = (newSlides: number[]) => {
+        setSlides(newSlides);
+    };
+
+
     const updateShapes = (
         newShapes: Shape[] | ((prev: Shape[]) => Shape[])
     ) => {
@@ -170,6 +211,7 @@ const MainLayout: React.FC = () => {
                     setCurrentSlide={setCurrentSlide}
                     onAddSlide={handleAddSlide}
                     thumbnails={thumbnails}
+                    onReorderSlides={handleReorderSlides}
                 />
                 <div className="canvas-container">
                     <Canvas

@@ -1,3 +1,5 @@
+import * as Y from "yjs";
+
 export interface Shape {
     id: number;
     type: "rectangle" | "circle" | "triangle";
@@ -20,6 +22,11 @@ export interface TextItem {
     color: string;
     fontSize?: number;
 }
+
+export type SlideContent = {
+    shapes: Y.Array<Shape>;
+    texts: Y.Array<TextItem>;
+};
 
 export type EditPayload =
     | { type: 'ADD_SHAPE'; shape: Shape }
