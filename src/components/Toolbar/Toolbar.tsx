@@ -8,6 +8,7 @@ interface ToolbarProps {
     setSelectedColor: (color: string) => void;
     defaultFontSize: number;
     setDefaultFontSize: (size: number) => void;
+    onImageUpload: (imageDataUrl: string) => void;
 }
 
 const Toolbar: React.FC<ToolbarProps> = ({
@@ -15,7 +16,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              activeTool,
                                              setSelectedColor,
                                              defaultFontSize,
-                                             setDefaultFontSize
+                                             setDefaultFontSize,
+                                             onImageUpload,
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
@@ -143,6 +145,51 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                 </div>
                             )}
                         </div>
+                    );
+                } else if (tool.name === "image") {
+                    return (
+                        <React.Fragment key={tool.name}>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                id="image-upload"
+                                style={{ display: "none" }}
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                            const imageDataUrl = reader.result as string;
+                                            onImageUpload(imageDataUrl);
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }
+                                }}
+
+                                // onChange={async (e) => {
+                                //     const file = e.target.files?.[0];
+                                //     if (file) {
+                                //         const formData = new FormData();
+                                //         formData.append("file", file);
+                                //
+                                //         const res = await fetch("https://~~~~/api/upload", {
+                                //             method: "POST",
+                                //             body: formData,
+                                //         });
+                                //
+                                //         const result = await res.json();
+                                //         const imageUrl = result.url;
+                                //
+                                //         onImageUpload(imageUrl);
+                                //     }
+                                // }}
+
+                            />
+
+                            <label htmlFor="image-upload" className="toolbar-btn">
+                                <img src={tool.icon} alt="Image" />
+                            </label>
+                        </React.Fragment>
                     );
                 } else {
                     return (

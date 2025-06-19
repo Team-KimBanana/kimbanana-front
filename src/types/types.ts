@@ -2,7 +2,7 @@ import * as Y from "yjs";
 
 export interface Shape {
     id: number;
-    type: "rectangle" | "circle" | "triangle";
+    type: "rectangle" | "circle" | "triangle" | "image";
     x?: number;
     y?: number;
     width?: number;
@@ -11,7 +11,8 @@ export interface Shape {
     radiusX?: number;
     radiusY?: number;
     points?: number[];
-    color: string;
+    color?: string;
+    imageSrc?: string;
 }
 
 export interface TextItem {
@@ -35,3 +36,18 @@ export type EditPayload =
     | { type: 'DELETE_TEXT'; id: number }
     | { type: 'UPDATE_SHAPE'; shape: Shape }
     | { type: 'UPDATE_TEXT'; text: TextItem };
+
+
+export interface ReceivedSlide {
+    slideId: string;
+    order: number;
+    data?: {
+        shapes?: Shape[];
+        texts?: TextItem[];
+    };
+}
+
+export interface SlideMeta {
+    id: string;
+    order: number;
+}

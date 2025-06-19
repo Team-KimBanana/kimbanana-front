@@ -21,6 +21,7 @@
     "react-konva": "18",
     "react-konva-utils": "^1.1.0",
     "sockjs-client": "^1.6.1",
+    "use-image": "^1.1.4",
     "uuid": "^11.1.0",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.27",

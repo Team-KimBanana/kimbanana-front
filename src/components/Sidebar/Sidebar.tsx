@@ -46,8 +46,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                         >
                             {slides.map((slideNum, index) => (
                                 <Draggable
-                                    key={slideNum}
-                                    draggableId={slideNum.toString()}
+                                    key={`slide-${slideNum}-${index}`}
+                                    draggableId={`slide-${slideNum}-${index}`}
                                     index={index}
                                 >
                                     {(dragProvided, snapshot) => (
@@ -59,7 +59,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                                             onClick={() => setCurrentSlide(slideNum)}
                                         >
                                             <span className="slide-number">{index + 1}</span>
-
                                             <div className="slide-thumbnail">
                                                 {thumbnails[slideNum] && (
                                                     <img
@@ -73,6 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     )}
                                 </Draggable>
                             ))}
+
 
                             {provided.placeholder}
 

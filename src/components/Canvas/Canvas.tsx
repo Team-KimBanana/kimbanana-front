@@ -4,6 +4,8 @@ import { Shape, TextItem} from "../../types/types.ts";
 import Konva from "konva";
 import "./Canvas.css";
 import {KonvaEventObject} from "konva/lib/Node";
+import { Image } from "react-konva";
+import useImage from "use-image";
 
 interface CanvasProps {
     activeTool: string;
@@ -377,7 +379,6 @@ const Canvas: React.FC<CanvasProps> = ({
                                         e.target.getLayer()?.batchDraw();
                                     }}
                                 />
-
                             )}
                             {shape.type === "triangle" && (
                                 <Line
@@ -410,7 +411,24 @@ const Canvas: React.FC<CanvasProps> = ({
                                         e.target.getLayer()?.batchDraw();
                                     }}
                                 />
-
+                            )}
+                            {shape.type === "image" && (
+                                <CanvasImage
+                                    key={shape.id}
+                                    shape={shape}
+                                    onSelect={() => {
+                                        setSelectedShapeId(shape.id);
+                                        setSelectedTextId(null);
+                                        setActiveTool("cursor");
+                                    }}
+                                    onDrag={(newX, newY) => {
+                                        const updated = { ...shape, x: newX, y: newY };
+                                        setShapes((prev) =>
+                                            prev.map((s) => (s.id === shape.id ? updated : s))
+                                        );
+                                        sendEdit();
+                                    }}
+                                />
                             )}
                         </React.Fragment>
                     ))}
@@ -457,6 +475,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             }}
                         />
                     )}
+
                 </Layer>
             </Stage>
 
@@ -533,7 +552,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                         t.id === editingText.id ? { ...t, text: trimmed } : t
                                     )
                                 );
-                                sendEdit(); // ⬅️ 저장 로직 추가
+                                sendEdit();
                             }
 
 
@@ -566,8 +585,32 @@ const Canvas: React.FC<CanvasProps> = ({
 
                     />
                 );
+
             })()}
         </div>
+    );
+};
+const CanvasImage: React.FC<{
+    shape: Shape;
+    onSelect: () => void;
+    onDrag: (x: number, y: number) => void;
+}> = ({ shape, onSelect, onDrag }) => {
+    const [image] = useImage(shape.imageSrc || "", "anonymous");
+
+    return (
+        <Image
+            image={image}
+            x={shape.x}
+            y={shape.y}
+            width={shape.width}
+            height={shape.height}
+            draggable
+            onClick={onSelect}
+            onDragEnd={(e) => {
+                const { x, y } = e.target.position();
+                onDrag(x, y);
+            }}
+        />
     );
 };
 
