@@ -27,14 +27,14 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://192.168.68.102:8080/ws-api",
+            brokerURL: "ws://192.168.68.142:8080/ws-api",
             reconnectDelay: 5000,
         });
 
         client.onConnect = () => {
             console.log("웹소켓 연결됨");
             subscribeToStructure(client);
-            subscribeToSlide(client, currentSlide);
+            subscribeToSlide(client);
         };
 
         client.activate();
@@ -45,40 +45,34 @@ const MainLayout: React.FC = () => {
         };
     }, []);
 
-    const subscribeToSlide = (client: Client, slideNumber: number) => {
-        const topic = `/topic/presentation.${presentationId}.slide.${slideNumber}`;
-        console.log("구독 시작:", topic);
-
-        subscriptionRef.current = client.subscribe(topic, (message) => {
-            const parsed = JSON.parse(message.body);
-            console.log("수신 메시지:", parsed);
-
-            setSlideData((prev) => ({
-                ...prev,
-                [slideNumber]: {
-                    shapes: parsed.data?.shapes || [],
-                    texts: parsed.data?.texts || [],
-                },
-            }));
-        });
-    };
-
     const broadcastFullSlideFromData = (
         data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
     ) => {
         if (isTyping) return;
 
-        const current = data[currentSlide];
+        const slidesPayload = Object.entries(data).map(([slideIdStr, content]) => {
+            const slideId = Number(slideIdStr);
+            return {
+                slideId: `slide-${slideId}`,
+                order: slideId,
+                lastRevisionDate: new Date().toISOString(),
+                lastRevisionUserId: "admin",
+                data: {
+                    shapes: content.shapes,
+                    texts: content.texts,
+                },
+            };
+        });
 
         const payload = {
-            last_revision_user_id: "admin",
-            data: {
-                shapes: current?.shapes || [],
-                texts: current?.texts || [],
-            },
+            presentationId,
+            presentationTitle: "제목 없음",
+            userId: "admin",
+            lastRevisionDate: new Date().toISOString(),
+            slides: slidesPayload,
         };
 
-        console.log("슬라이드 단일 전송:", payload);
+        console.log("슬라이드 전체 전송(payload):", payload);
 
         stompClientRef.current?.publish({
             destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
@@ -86,8 +80,77 @@ const MainLayout: React.FC = () => {
         });
     };
 
+
+    const subscribeToSlide = (client: Client) => {
+        const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
+        console.log("구독 시작:", topic);
+
+        subscriptionRef.current = client.subscribe(topic, (message) => {
+            const parsed = JSON.parse(message.body);
+            console.log("수신 메시지:", parsed);
+
+            const slideList: ReceivedSlide[] = parsed.slides || [];
+            const newSlideData: {
+                [key: number]: { shapes: Shape[]; texts: TextItem[] };
+            } = {};
+            const orders: number[] = [];
+
+            const seen = new Set<number>();
+            for (const slide of slideList) {
+                let order = slide.order;
+                while (seen.has(order)) order++;
+                seen.add(order);
+
+                orders.push(order);
+                newSlideData[order] = {
+                    shapes: slide.data?.shapes || [],
+                    texts: slide.data?.texts || [],
+                };
+            }
+
+            setSlides(orders);
+            setSlideData(newSlideData);
+            if (orders.length > 0) setCurrentSlide(orders[0]);
+        });
+    };
+
+
+    const broadcastStructure = (
+        data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
+    ) => {
+        const slidesPayload = Object.keys(data).map((slideIdStr) => {
+            const slideId = Number(slideIdStr);
+            return {
+                slideId: `slide-${slideId}`,
+                order: slideId,
+                lastRevisionDate: new Date().toISOString(),
+                lastRevisionUserId: "admin",
+                data: {
+                    shapes: data[slideId].shapes,
+                    texts: data[slideId].texts,
+                },
+            };
+        });
+
+
+        const payload = {
+            presentationId,
+            presentationTitle: "제목 없음",
+            lastRevisionDate: new Date().toISOString(),
+            userId: "admin",
+            slides: slidesPayload,
+        };
+
+        console.log("전체 구조 전송:", payload);
+
+        stompClientRef.current?.publish({
+            destination: `/app/slide.edit.struct.presentation.${presentationId}`,
+            body: JSON.stringify(payload),
+        });
+    };
+
     const subscribeToStructure = (client: Client) => {
-        const topic = `/topic/presentation.${presentationId}`;
+        const topic = `/topic/struct/presentation.${presentationId}`;
         console.log("구조 구독 시작:", topic);
 
         client.subscribe(topic, (message) => {
@@ -125,35 +188,6 @@ const MainLayout: React.FC = () => {
         });
     };
 
-    const broadcastStructure = (
-        data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
-    ) => {
-        const slidesPayload = Object.keys(data).map((slideIdStr) => {
-            const slideId = Number(slideIdStr);
-            return {
-                slideId: `slide-${slideId}`,
-                order: slideId,
-                lastRevisionDate: new Date().toISOString(),
-                lastRevisionUserId: "admin",
-            };
-        });
-
-        const payload = {
-            presentationId,
-            presentationTitle: "제목 없음",
-            lastRevisionDate: new Date().toISOString(),
-            userId: "admin",
-            slides: slidesPayload,
-        };
-
-        console.log("전체 구조 전송:", payload);
-
-        stompClientRef.current?.publish({
-            destination: `/app/slide.edit.presentation.${presentationId}`,
-            body: JSON.stringify(payload),
-        });
-    };
-
     const handleAddSlide = () => {
         const maxSlideNum = Math.max(...slides, 0);
         const newSlideNum = maxSlideNum + 1;
@@ -167,7 +201,7 @@ const MainLayout: React.FC = () => {
 
             const client = stompClientRef.current;
             if (client && client.connected) {
-                subscribeToSlide(client, newSlideNum);
+                subscribeToSlide(client);
             }
 
             setTimeout(() => broadcastStructure(newData), 0);
