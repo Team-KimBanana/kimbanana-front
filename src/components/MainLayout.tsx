@@ -9,7 +9,7 @@ import Toolbar from "./Toolbar/Toolbar";
 import { Shape, TextItem, ReceivedSlide } from "../types/types";
 import "./MainLayout.css";
 
-const presentationId = "p_19025";
+const presentationId = "p_001";
 
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
@@ -35,6 +35,7 @@ const MainLayout: React.FC = () => {
             console.log("웹소켓 연결됨");
             subscribeToStructure(client);
             subscribeToSlide(client);
+            fetchSlides();
         };
 
         client.activate();
@@ -44,6 +45,46 @@ const MainLayout: React.FC = () => {
             client.deactivate();
         };
     }, []);
+
+
+    const fetchSlides = async () => {
+        try {
+            const res = await fetch(`http://192.168.68.142:8080/api/presentations/${presentationId}/slides`);
+            if (!res.ok) {
+                console.error("슬라이드 불러오기 실패", res.status);
+                return;
+            }
+
+            const json = await res.json();
+            const slideList: ReceivedSlide[] = json.slides;
+            if (!Array.isArray(slideList)) {
+                console.error("슬라이드 응답 형식 오류:", slideList);
+                return;
+            }
+
+            const newSlideData: Record<number, { shapes: Shape[]; texts: TextItem[] }> = {};
+            const orders: number[] = [];
+
+            const seen = new Set<number>();
+            slideList.forEach(({ order, data }) => {
+                while (seen.has(order)) order++;
+                seen.add(order);
+
+                orders.push(order);
+                newSlideData[order] = {
+                    shapes: data?.shapes || [],
+                    texts: data?.texts || [],
+                };
+            });
+
+            setSlides(orders);
+            setSlideData(newSlideData);
+            if (orders.length > 0) setCurrentSlide(orders[0]);
+
+        } catch (err) {
+            console.error("슬라이드 fetch 중 오류 발생:", err);
+        }
+    };
 
     const broadcastFullSlideFromData = (
         data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
