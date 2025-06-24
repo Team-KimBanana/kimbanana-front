@@ -8,12 +8,12 @@ import {
 import "./Sidebar.css";
 
 interface SidebarProps {
-    slides: number[];
-    currentSlide: number;
-    setCurrentSlide: React.Dispatch<React.SetStateAction<number>>;
+    slides: string[];
+    currentSlide: string;
+    setCurrentSlide: React.Dispatch<React.SetStateAction<string>>;
     onAddSlide: () => void;
-    thumbnails: { [key: number]: string };
-    onReorderSlides: (newSlides: number[]) => void;
+    thumbnails: { [key: string]: string };
+    onReorderSlides: (newSlides: string[]) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({

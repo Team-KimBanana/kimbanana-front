@@ -9,17 +9,15 @@ import Toolbar from "./Toolbar/Toolbar";
 import { Shape, TextItem, ReceivedSlide } from "../types/types";
 import "./MainLayout.css";
 
-const presentationId = "p_001";
+const presentationId = "p_2929";
 
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
-    const [slides, setSlides] = useState<number[]>([1]);
-    const [currentSlide, setCurrentSlide] = useState<number>(1);
-    const [slideData, setSlideData] = useState<{
-        [key: number]: { shapes: Shape[]; texts: TextItem[] };
-    }>({ 1: { shapes: [], texts: [] } });
-    const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
+    const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
+    const [currentSlide, setCurrentSlide] = useState<string>("");
+    const [slideData, setSlideData] = useState<{ [key: string]: { shapes: Shape[]; texts: TextItem[] } }>({});
+    const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
     const [isTyping, setIsTyping] = useState<boolean>(false);
     const [defaultFontSize, setDefaultFontSize] = useState(20);
     const stompClientRef = useRef<Client | null>(null);
@@ -27,7 +25,7 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://192.168.68.142:8080/ws-api",
+            brokerURL: "ws://192.168.10.75:8080/ws-api",
             reconnectDelay: 5000,
         });
 
@@ -46,10 +44,9 @@ const MainLayout: React.FC = () => {
         };
     }, []);
 
-
     const fetchSlides = async () => {
         try {
-            const res = await fetch(`http://192.168.68.142:8080/api/presentations/${presentationId}/slides`);
+            const res = await fetch(`http://192.168.10.75:8080/api/presentations/${presentationId}/slides`);
             if (!res.ok) {
                 console.error("슬라이드 불러오기 실패", res.status);
                 return;
@@ -62,54 +59,40 @@ const MainLayout: React.FC = () => {
                 return;
             }
 
-            const newSlideData: Record<number, { shapes: Shape[]; texts: TextItem[] }> = {};
-            const orders: number[] = [];
+            const newSlideData: Record<string, { shapes: Shape[]; texts: TextItem[] }> = {};
+            const orders: { id: string; order: number }[] = [];
 
-            const seen = new Set<number>();
-            slideList.forEach(({ order, data }) => {
-                while (seen.has(order)) order++;
-                seen.add(order);
-
-                orders.push(order);
-                newSlideData[order] = {
-                    shapes: data?.shapes || [],
-                    texts: data?.texts || [],
+            slideList.forEach((slide) => {
+                const id = slide.slideId;
+                newSlideData[id] = {
+                    shapes: slide.data?.shapes || [],
+                    texts: slide.data?.texts || [],
                 };
+                orders.push({ id, order: slide.slideOrder });
             });
 
+            orders.sort((a, b) => a.order - b.order);
             setSlides(orders);
             setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0]);
-
+            if (orders.length > 0) setCurrentSlide(orders[0].id);
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
         }
     };
 
-    const broadcastFullSlideFromData = (
-        data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
-    ) => {
+    const broadcastFullSlideFromData = (data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } }) => {
         if (isTyping) return;
 
-        const slidesPayload = Object.entries(data).map(([slideIdStr, content]) => {
-            const slideId = Number(slideIdStr);
-            return {
-                slideId: `slide-${slideId}`,
-                order: slideId,
-                lastRevisionDate: new Date().toISOString(),
-                lastRevisionUserId: "admin",
-                data: {
-                    shapes: content.shapes,
-                    texts: content.texts,
-                },
-            };
-        });
+        const slidesPayload = slides.map(({ id, order }) => ({
+            slideId: id,
+            order,
+            lastRevisionUserId: "admin",
+            data: data[id],
+        }));
 
         const payload = {
             presentationId,
-            presentationTitle: "제목 없음",
             userId: "admin",
-            lastRevisionDate: new Date().toISOString(),
             slides: slidesPayload,
         };
 
@@ -119,8 +102,8 @@ const MainLayout: React.FC = () => {
             destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
             body: JSON.stringify(payload),
         });
-    };
 
+    };
 
     const subscribeToSlide = (client: Client) => {
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
@@ -131,54 +114,40 @@ const MainLayout: React.FC = () => {
             console.log("수신 메시지:", parsed);
 
             const slideList: ReceivedSlide[] = parsed.slides || [];
-            const newSlideData: {
-                [key: number]: { shapes: Shape[]; texts: TextItem[] };
-            } = {};
-            const orders: number[] = [];
+            const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
+            const orders: { id: string; order: number }[] = [];
 
-            const seen = new Set<number>();
-            for (const slide of slideList) {
-                let order = slide.order;
-                while (seen.has(order)) order++;
-                seen.add(order);
+            slideList.forEach((slide) => {
+                const id = slide.slideId;
+                if (typeof slide.data !== "object" || slide.data === null) return;
 
-                orders.push(order);
-                newSlideData[order] = {
-                    shapes: slide.data?.shapes || [],
-                    texts: slide.data?.texts || [],
+                newSlideData[id] = {
+                    shapes: slide.data.shapes || [],
+                    texts: slide.data.texts || [],
                 };
-            }
+                orders.push({ id, order: slide.slideOrder || 9999 });
+            });
 
+            orders.sort((a, b) => a.order - b.order);
             setSlides(orders);
             setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0]);
+            if (orders.length > 0) setCurrentSlide(orders[0].id);
         });
     };
 
-
     const broadcastStructure = (
-        data: { [key: number]: { shapes: Shape[]; texts: TextItem[] } }
+        data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } },
+        slideOrder: { id: string; order: number }[]
     ) => {
-        const slidesPayload = Object.keys(data).map((slideIdStr) => {
-            const slideId = Number(slideIdStr);
-            return {
-                slideId: `slide-${slideId}`,
-                order: slideId,
-                lastRevisionDate: new Date().toISOString(),
-                lastRevisionUserId: "admin",
-                data: {
-                    shapes: data[slideId].shapes,
-                    texts: data[slideId].texts,
-                },
-            };
-        });
-
+        const slidesPayload = slideOrder.map(({ id, order }) => ({
+            slideId: id,
+            order,
+            data: data[id],
+        }));
 
         const payload = {
             presentationId,
             presentationTitle: "제목 없음",
-            lastRevisionDate: new Date().toISOString(),
-            userId: "admin",
             slides: slidesPayload,
         };
 
@@ -199,70 +168,62 @@ const MainLayout: React.FC = () => {
             console.log("구조 수신 메시지:", parsed);
 
             const slideList: ReceivedSlide[] = parsed.slides || [];
-            const newSlideData: {
-                [key: number]: { shapes: Shape[]; texts: TextItem[] };
-            } = {};
-            const orders: number[] = [];
+            const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
+            const orders: { id: string; order: number }[] = [];
 
-            const seen = new Set<number>();
-            for (let i = 0; i < slideList.length; i++) {
-                const slide = slideList[i];
-                let order = slide.order;
+            slideList.forEach((slide) => {
+                const id = slide.slideId;
+                if (typeof slide.data !== "object" || slide.data === null) return;
 
-                while (seen.has(order)) {
-                    order += 1;
-                }
-                seen.add(order);
-
-                orders.push(order);
-                newSlideData[order] = {
-                    shapes: slide.data?.shapes || [],
-                    texts: slide.data?.texts || [],
+                newSlideData[id] = {
+                    shapes: slide.data.shapes || [],
+                    texts: slide.data.texts || [],
                 };
-            }
+                orders.push({ id, order: slide.slideOrder || 9999 });
+            });
 
-            console.log("수신된 slide orders:", slideList.map((s) => s.order));
+            orders.sort((a, b) => a.order - b.order);
+            console.log("수신된 slide orders:", orders);
 
             setSlides(orders);
             setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0]);
+            if (orders.length > 0) setCurrentSlide(orders[0].id);
         });
     };
 
     const handleAddSlide = () => {
-        const maxSlideNum = Math.max(...slides, 0);
-        const newSlideNum = maxSlideNum + 1;
+        const ids = slides.map(s => parseInt(s.id.replace("s_", ""), 10)).filter(id => !isNaN(id));
+        const maxId = ids.length > 0 ? Math.max(...ids) : 0;
+        const newId = `s_${maxId + 1}`;
+        const newSlide = { id: newId, order: slides.length + 1 };
+        const newSlides = [...slides, newSlide];
+        const newData = { ...slideData, [newId]: { shapes: [], texts: [] } };
 
-        setSlides((prev) => [...prev, newSlideNum]);
-        setSlideData((prev) => {
-            const newData = {
-                ...prev,
-                [newSlideNum]: { shapes: [], texts: [] },
-            };
+        setSlides(newSlides);
+        setSlideData(newData);
+        setCurrentSlide(newId);
 
-            const client = stompClientRef.current;
-            if (client && client.connected) {
-                subscribeToSlide(client);
-            }
-
-            setTimeout(() => broadcastStructure(newData), 0);
-            return newData;
-        });
-        setCurrentSlide(newSlideNum);
+        setTimeout(() => broadcastStructure(newData, newSlides), 0);
     };
 
-    const handleDeleteSlide = (slideNum: number) => {
+    const handleDeleteSlide = (slideId: string) => {
         if (slides.length === 1) return;
-        const newSlides = slides.filter((s) => s !== slideNum);
+
+        const newSlides = slides
+            .filter(s => s.id !== slideId)
+            .map((s, i) => ({ ...s, order: i + 1 }));
+
         const newSlideData = { ...slideData };
-        delete newSlideData[slideNum];
+        delete newSlideData[slideId];
+
         setSlides(newSlides);
         setSlideData(newSlideData);
-        if (currentSlide === slideNum) {
-            const index = slides.indexOf(slideNum);
-            const nextSlide = newSlides[Math.max(0, index - 1)];
-            setCurrentSlide(nextSlide);
+
+        if (currentSlide === slideId) {
+            setCurrentSlide(newSlides[0].id);
         }
+
+        broadcastStructure(newSlideData, newSlides);
     };
 
     useEffect(() => {
@@ -276,19 +237,18 @@ const MainLayout: React.FC = () => {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [currentSlide, slides, isTyping]);
 
-    const handleReorderSlides = (newSlides: number[]) => {
-        setSlides(newSlides);
+    const handleReorderSlides = (newOrder: string[]) => {
+        const updatedSlides = newOrder.map((id, index) => ({
+            id,
+            order: index + 1,
+        }));
+        setSlides(updatedSlides);
+        broadcastStructure(slideData, updatedSlides);
     };
 
-    const updateShapes = (
-        newShapes: Shape[] | ((prev: Shape[]) => Shape[])
-    ) => {
+    const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
         setSlideData((prev) => {
-            const updatedShapes =
-                typeof newShapes === "function"
-                    ? newShapes(prev[currentSlide]?.shapes || [])
-                    : newShapes;
-
+            const updatedShapes = typeof newShapes === "function" ? newShapes(prev[currentSlide]?.shapes || []) : newShapes;
             const newData = {
                 ...prev,
                 [currentSlide]: {
@@ -302,15 +262,9 @@ const MainLayout: React.FC = () => {
         });
     };
 
-    const updateTexts = (
-        newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])
-    ) => {
+    const updateTexts = (newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])) => {
         setSlideData((prev) => {
-            const updatedTexts =
-                typeof newTexts === "function"
-                    ? newTexts(prev[currentSlide]?.texts || [])
-                    : newTexts;
-
+            const updatedTexts = typeof newTexts === "function" ? newTexts(prev[currentSlide]?.texts || []) : newTexts;
             const newData = {
                 ...prev,
                 [currentSlide]: {
@@ -342,7 +296,7 @@ const MainLayout: React.FC = () => {
             <Header />
             <div className="content">
                 <Sidebar
-                    slides={slides}
+                    slides={slides.map(s => s.id)}
                     currentSlide={currentSlide}
                     setCurrentSlide={setCurrentSlide}
                     onAddSlide={handleAddSlide}

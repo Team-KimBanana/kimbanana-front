@@ -1,4 +1,4 @@
-import * as Y from "yjs";
+// import * as Y from "yjs";
 
 export interface Shape {
     id: number;
@@ -24,11 +24,6 @@ export interface TextItem {
     fontSize?: number;
 }
 
-export type SlideContent = {
-    shapes: Y.Array<Shape>;
-    texts: Y.Array<TextItem>;
-};
-
 export type EditPayload =
     | { type: 'ADD_SHAPE'; shape: Shape }
     | { type: 'ADD_TEXT'; text: TextItem }
@@ -40,14 +35,19 @@ export type EditPayload =
 
 export interface ReceivedSlide {
     slideId: string;
-    order: number;
-    data?: {
+    slideOrder: number;
+    data: {
         shapes?: Shape[];
         texts?: TextItem[];
     };
 }
 
-export interface SlideMeta {
-    id: string;
-    order: number;
-}
+export type SlideData = {
+    shapes: Shape[];
+    texts: TextItem[];
+};
+
+export type SlideMap = {
+    [slideId: string]: SlideData;
+};
+

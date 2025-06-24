@@ -15,8 +15,8 @@ interface CanvasProps {
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
     texts: TextItem[];
     setTexts: React.Dispatch<React.SetStateAction<TextItem[]>>;
-    currentSlide: number;
-    updateThumbnail: (slideId: number, dataUrl: string) => void;
+    currentSlide: string;
+    updateThumbnail: (slideId: string, dataUrl: string) => void;
     sendEdit: () => void;
     setIsTyping: (typing: boolean) => void;
     defaultFontSize: number;
@@ -40,7 +40,6 @@ const drawTrianglePoints = (
         width / 2, height / 2
     ];
 };
-
 
 const Canvas: React.FC<CanvasProps> = ({
                                            activeTool,
@@ -66,22 +65,32 @@ const Canvas: React.FC<CanvasProps> = ({
     const backgroundRef = useRef<Konva.Rect>(null);
     const stageRef = useRef<Konva.Stage>(null);
     const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+    const prevDataRef = useRef<{ shapes: Shape[]; texts: TextItem[] }>({ shapes: [], texts: [] });
+    const thumbnailTimeout = useRef<NodeJS.Timeout | null>(null);
 
+    useEffect(() => {
+        if (thumbnailTimeout.current) clearTimeout(thumbnailTimeout.current);
 
-    useEffect(() => { // 썸넬용
-        if (stageRef.current) {
-            const dataUrl = stageRef.current.toDataURL({ pixelRatio: 0.25 });
-            updateThumbnail(currentSlide, dataUrl);
-        }
-    }, [shapes, texts]);
-
+        thumbnailTimeout.current = setTimeout(() => {
+            if (stageRef.current) {
+                const dataUrl = stageRef.current.toDataURL({ pixelRatio: 0.25 });
+                updateThumbnail(currentSlide, dataUrl);
+            }
+        }, 300);
+    }, [shapes, texts, currentSlide]);
 
 
     useEffect(() => {
-        setSelectedShapeId(null);
-        setSelectedTextId(null);
-        setEditingText(null);
-    }, [currentSlide]);
+        const prev = prevDataRef.current;
+        const hasChanged =
+            JSON.stringify(prev.shapes) !== JSON.stringify(shapes) ||
+            JSON.stringify(prev.texts) !== JSON.stringify(texts);
+
+        if (hasChanged) {
+            sendEdit();
+            prevDataRef.current = { shapes, texts };
+        }
+    }, [shapes, texts]);
 
     const addShape = (x: number, y: number) => {
         let newShape: Shape | null = null;
