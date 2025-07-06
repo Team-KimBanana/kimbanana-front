@@ -55,7 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                             ref={dragProvided.innerRef}
                                             {...dragProvided.draggableProps}
                                             {...dragProvided.dragHandleProps}
-                                            className={`slide-item ${slideNum === currentSlide ? "selected" : ""} ${snapshot.isDragging ? "dragging" : ""}`}
+                                            className={`slide-item ${slideNum === currentSlide && currentSlide !== "" ? "selected" : ""} ${snapshot.isDragging ? "dragging" : ""}`}
                                             onClick={() => setCurrentSlide(slideNum)}
                                         >
                                             <span className="slide-number">{index + 1}</span>

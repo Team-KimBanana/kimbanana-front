@@ -9,7 +9,9 @@ import Toolbar from "./Toolbar/Toolbar";
 import { Shape, TextItem, ReceivedSlide } from "../types/types";
 import "./MainLayout.css";
 
-const presentationId = "p_2929";
+const presentationId = "p1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
+const WS_URL = import.meta.env.VITE_WS_URL;
 
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
@@ -25,14 +27,13 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const client = new Client({
-            brokerURL: "ws://192.168.10.75:8080/ws-api",
+            brokerURL: WS_URL,
             reconnectDelay: 5000,
         });
 
         client.onConnect = () => {
             console.log("웹소켓 연결됨");
             subscribeToStructure(client);
-            subscribeToSlide(client);
             fetchSlides();
         };
 
@@ -46,18 +47,54 @@ const MainLayout: React.FC = () => {
 
     const fetchSlides = async () => {
         try {
-            const res = await fetch(`http://192.168.10.75:8080/api/presentations/${presentationId}/slides`);
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`);
             if (!res.ok) {
                 console.error("슬라이드 불러오기 실패", res.status);
                 return;
             }
 
             const json = await res.json();
-            const slideList: ReceivedSlide[] = json.slides;
-            if (!Array.isArray(slideList)) {
-                console.error("슬라이드 응답 형식 오류:", slideList);
+            console.log("슬라이드 API 응답:", json);
+
+            const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
+
+            if (slideList.length === 0) {
+                const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+                    method: "POST",
+                });
+                const json = await res.json();
+                const defaultSlideId = json.slide_id;
+                const defaultOrder = json.order;
+
+                const defaultSlides = [{ id: defaultSlideId, order: defaultOrder }];
+                const defaultData = {
+                    [defaultSlideId]: { shapes: [], texts: [] },
+                };
+
+                setSlides(defaultSlides);
+                setSlideData(defaultData);
+                setCurrentSlide(defaultSlideId);
+
+                const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
+                const payload = {
+                    type: "SLIDE_ADD",
+                    payload: {
+                        slide_id: defaultSlideId,
+                        order: defaultOrder,
+                    },
+                };
+
+                console.log("[WebSocket 구조 전송]", destination, payload);
+
+                stompClientRef.current?.publish({
+                    destination,
+                    body: JSON.stringify(payload),
+                });
+
                 return;
             }
+
+
 
             const newSlideData: Record<string, { shapes: Shape[]; texts: TextItem[] }> = {};
             const orders: { id: string; order: number }[] = [];
@@ -74,87 +111,86 @@ const MainLayout: React.FC = () => {
             orders.sort((a, b) => a.order - b.order);
             setSlides(orders);
             setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0].id);
+            setCurrentSlide(orders[0].id);
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
         }
     };
 
+    useEffect(() => {
+        if (!stompClientRef.current || !currentSlide) return;
+
+        // subscriptionRef.current?.unsubscribe();
+
+        const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
+        console.log("슬라이드 구독 시작:", topic);
+
+        subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
+            console.log("슬라이드 원본 메시지 수신:", message.body);
+            const parsed = JSON.parse(message.body);
+            console.log("슬라이드 수신 메시지:", parsed);
+
+            if (!parsed.data) {
+                console.warn("수신 데이터에 data가 없음:", parsed);
+                return;
+            }
+
+            setSlideData(prev => ({
+                ...prev,
+                [currentSlide]: {
+                    shapes: parsed.data.shapes || [],
+                    texts: parsed.data.texts || [],
+                },
+            }));
+        });
+    }, [currentSlide]);
+
+
+
+    const normalizeShapes = (shapes: Shape[]): Shape[] => {
+        return shapes.map(shape => ({
+            type: shape.type,
+            x: shape.x,
+            y: shape.y,
+            color: shape.color || "#000000",
+            id: shape.id,
+            radius: shape.radius || 0,
+            width: shape.width || 0,
+            height: shape.height || 0,
+            points: shape.points || []
+        }));
+    };
+
+    const normalizeTexts = (texts: TextItem[]): TextItem[] => {
+        return texts.map(text => ({
+            id: text.id,
+            text: text.text,
+            x: text.x,
+            y: text.y,
+            color: text.color || "#000000"
+        }));
+    };
+
+
     const broadcastFullSlideFromData = (data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } }) => {
         if (isTyping) return;
 
-        const slidesPayload = slides.map(({ id, order }) => ({
-            slideId: id,
-            order,
+        const slide = data[currentSlide];
+
+        const payload = {
             lastRevisionUserId: "admin",
-            data: data[id],
-        }));
-
-        const payload = {
-            presentationId,
-            userId: "admin",
-            slides: slidesPayload,
+            data: {
+                shapes: normalizeShapes(slide.shapes),
+                texts: normalizeTexts(slide.texts),
+            },
         };
 
-        console.log("슬라이드 전체 전송(payload):", payload);
+        const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
+        console.log("WebSocket 데이터 전송 대상:", destination);
+        console.log("WebSocket 데이터 전송: ", payload);
 
         stompClientRef.current?.publish({
-            destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
-            body: JSON.stringify(payload),
-        });
-
-    };
-
-    const subscribeToSlide = (client: Client) => {
-        const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
-        console.log("구독 시작:", topic);
-
-        subscriptionRef.current = client.subscribe(topic, (message) => {
-            const parsed = JSON.parse(message.body);
-            console.log("수신 메시지:", parsed);
-
-            const slideList: ReceivedSlide[] = parsed.slides || [];
-            const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
-            const orders: { id: string; order: number }[] = [];
-
-            slideList.forEach((slide) => {
-                const id = slide.slideId;
-                if (typeof slide.data !== "object" || slide.data === null) return;
-
-                newSlideData[id] = {
-                    shapes: slide.data.shapes || [],
-                    texts: slide.data.texts || [],
-                };
-                orders.push({ id, order: slide.slideOrder || 9999 });
-            });
-
-            orders.sort((a, b) => a.order - b.order);
-            setSlides(orders);
-            setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0].id);
-        });
-    };
-
-    const broadcastStructure = (
-        data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } },
-        slideOrder: { id: string; order: number }[]
-    ) => {
-        const slidesPayload = slideOrder.map(({ id, order }) => ({
-            slideId: id,
-            order,
-            data: data[id],
-        }));
-
-        const payload = {
-            presentationId,
-            presentationTitle: "제목 없음",
-            slides: slidesPayload,
-        };
-
-        console.log("전체 구조 전송:", payload);
-
-        stompClientRef.current?.publish({
-            destination: `/app/slide.edit.struct.presentation.${presentationId}`,
+            destination,
             body: JSON.stringify(payload),
         });
     };
@@ -167,47 +203,85 @@ const MainLayout: React.FC = () => {
             const parsed = JSON.parse(message.body);
             console.log("구조 수신 메시지:", parsed);
 
-            const slideList: ReceivedSlide[] = parsed.slides || [];
-            const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
-            const orders: { id: string; order: number }[] = [];
+            const { type, payload } = parsed;
 
-            slideList.forEach((slide) => {
-                const id = slide.slideId;
-                if (typeof slide.data !== "object" || slide.data === null) return;
+            if (type === "SLIDE_ADD" || type === "STRUCTURE_UPDATE" || type === "SLIDE_DELETE") {
+                const slideList = payload.slides || [];
 
-                newSlideData[id] = {
-                    shapes: slide.data.shapes || [],
-                    texts: slide.data.texts || [],
-                };
-                orders.push({ id, order: slide.slideOrder || 9999 });
-            });
+                const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
+                const orders: { id: string; order: number }[] = [];
 
-            orders.sort((a, b) => a.order - b.order);
-            console.log("수신된 slide orders:", orders);
+                slideList.forEach((slide: {
+                    slide_id: string;
+                    order: number;
+                    data?: {
+                        shapes?: Shape[];
+                        texts?: TextItem[];
+                    };
+                }) => {
+                    const id = slide.slide_id;
 
-            setSlides(orders);
-            setSlideData(newSlideData);
-            if (orders.length > 0) setCurrentSlide(orders[0].id);
+                    newSlideData[id] = {
+                        shapes: slide.data?.shapes || [],
+                        texts: slide.data?.texts || [],
+                    };
+
+                    orders.push({ id, order: slide.order ?? 9999 });
+                });
+
+
+                orders.sort((a, b) => a.order - b.order);
+                console.log("구조 수신: ", orders);
+
+                setSlides(orders);
+                setSlideData(newSlideData);
+                if (orders.length > 0) setCurrentSlide(orders[0].id);
+            }
         });
     };
 
-    const handleAddSlide = () => {
-        const ids = slides.map(s => parseInt(s.id.replace("s_", ""), 10)).filter(id => !isNaN(id));
-        const maxId = ids.length > 0 ? Math.max(...ids) : 0;
-        const newId = `s_${maxId + 1}`;
-        const newSlide = { id: newId, order: slides.length + 1 };
-        const newSlides = [...slides, newSlide];
-        const newData = { ...slideData, [newId]: { shapes: [], texts: [] } };
 
-        setSlides(newSlides);
-        setSlideData(newData);
-        setCurrentSlide(newId);
+    const handleAddSlide = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+                method: "POST",
+            });
+            const json = await res.json();
 
-        setTimeout(() => broadcastStructure(newData, newSlides), 0);
+            const newId = json.slide_id;
+            const newOrder = json.order;
+            const newSlide = { id: newId, order: newOrder };
+
+            const newSlides = [...slides, newSlide];
+            const newData = { ...slideData, [newId]: { shapes: [], texts: [] } };
+
+            setSlides(newSlides);
+            setSlideData(newData);
+            setCurrentSlide(newId);
+
+            const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
+            const payload = {
+                type: "SLIDE_ADD",
+                payload: {
+                    slide_id: newId,
+                    order: newOrder,
+                },
+            };
+
+            console.log("[WebSocket 구조 전송]", destination, payload);
+
+            stompClientRef.current?.publish({
+                destination,
+                body: JSON.stringify(payload),
+            });
+        } catch (err) {
+            console.error("슬라이드 추가 실패:", err);
+        }
     };
 
-    const handleDeleteSlide = (slideId: string) => {
-        if (slides.length === 1) return;
+
+    const handleDeleteSlide = async (slideId: string) => {
+        if (!currentSlide || slides.length === 1) return;
 
         const newSlides = slides
             .filter(s => s.id !== slideId)
@@ -223,8 +297,38 @@ const MainLayout: React.FC = () => {
             setCurrentSlide(newSlides[0].id);
         }
 
-        broadcastStructure(newSlideData, newSlides);
+        await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                presentation_id: presentationId,
+                slides: newSlides.map(s => ({
+                    slide_id: s.id,
+                    order: s.order,
+                })),
+            }),
+        });
+
+        const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
+        const payload = {
+            type: "SLIDE_DELETE",
+            payload: {
+                presenation_id: presentationId,
+                slides: newSlides.map(s => ({
+                    slide_id: s.id,
+                    order: s.order,
+                })),
+            },
+        };
+
+        console.log("[WebSocket 구조 전송]", destination, payload);
+
+        stompClientRef.current?.publish({
+            destination,
+            body: JSON.stringify(payload),
+        });
     };
+
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -237,14 +341,46 @@ const MainLayout: React.FC = () => {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [currentSlide, slides, isTyping]);
 
-    const handleReorderSlides = (newOrder: string[]) => {
+
+    const handleReorderSlides = async (newOrder: string[]) => {
         const updatedSlides = newOrder.map((id, index) => ({
             id,
             order: index + 1,
         }));
         setSlides(updatedSlides);
-        broadcastStructure(slideData, updatedSlides);
+
+        await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                presentation_id: presentationId,
+                slides: updatedSlides.map(s => ({
+                    slide_id: s.id,
+                    order: s.order,
+                })),
+            }),
+        });
+
+        const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
+        const payload = {
+            type: "STRUCTURE_UPDATE",
+            payload: {
+                presentation_id: presentationId,
+                slides: updatedSlides.map(s => ({
+                    slide_id: s.id,
+                    order: s.order,
+                })),
+            },
+        };
+
+        console.log("[WebSocket 구조 전송]", destination, payload);
+
+        stompClientRef.current?.publish({
+            destination,
+            body: JSON.stringify(payload),
+        });
     };
+
 
     const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
         setSlideData((prev) => {

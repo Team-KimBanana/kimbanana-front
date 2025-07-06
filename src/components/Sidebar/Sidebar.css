@@ -34,9 +34,11 @@
     cursor: pointer;
 }
 
-.selected .slide-thumbnail {
+
+.slide-item.selected .slide-thumbnail {
     border: 2px solid #f5ba42;
 }
+
 
 .slide-item {
     cursor: grab;
