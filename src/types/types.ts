@@ -34,13 +34,14 @@ export type EditPayload =
 
 
 export interface ReceivedSlide {
-    slideId: string;
-    slideOrder: number;
-    data: {
+    slide_id: string;
+    order: number;
+    data?: {
         shapes?: Shape[];
         texts?: TextItem[];
     };
 }
+
 
 export type SlideData = {
     shapes: Shape[];

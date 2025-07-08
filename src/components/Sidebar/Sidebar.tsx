@@ -50,7 +50,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         }
     };
 
-    // slides 바뀌면 전체 선택 유지
     useEffect(() => {
         if (selectAll) {
             setSelectedSlides([...slides]);

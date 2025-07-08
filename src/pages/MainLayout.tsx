@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Client, StompSubscription } from "@stomp/stompjs";
+import React, {useState, useEffect, useRef} from "react";
+import {Client, StompSubscription} from "@stomp/stompjs";
 
 import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
-import { Shape, TextItem, ReceivedSlide } from "../types/types.ts";
+import {Shape, TextItem, ReceivedSlide} from "../types/types.ts";
 import "./MainLayout.css";
 
 const presentationId = "p1";
@@ -16,6 +16,8 @@ const WS_URL = import.meta.env.VITE_WS_URL;
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
+    const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
     const [currentSlide, setCurrentSlide] = useState<string>("");
     const [slideData, setSlideData] = useState<{ [key: string]: { shapes: Shape[]; texts: TextItem[] } }>({});
@@ -75,22 +77,6 @@ const MainLayout: React.FC = () => {
                 setSlideData(defaultData);
                 setCurrentSlide(defaultSlideId);
 
-                const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
-                const payload = {
-                    type: "SLIDE_ADD",
-                    payload: {
-                        slide_id: defaultSlideId,
-                        order: defaultOrder,
-                    },
-                };
-
-                console.log("[WebSocket 구조 전송]", destination, payload);
-
-                stompClientRef.current?.publish({
-                    destination,
-                    body: JSON.stringify(payload),
-                });
-
                 return;
             }
 
@@ -100,18 +86,21 @@ const MainLayout: React.FC = () => {
             const orders: { id: string; order: number }[] = [];
 
             slideList.forEach((slide) => {
-                const id = slide.slideId;
+                const id = slide.slide_id;
                 newSlideData[id] = {
                     shapes: slide.data?.shapes || [],
                     texts: slide.data?.texts || [],
                 };
-                orders.push({ id, order: slide.slideOrder });
+                orders.push({id, order: slide.order});
             });
 
+
             orders.sort((a, b) => a.order - b.order);
-            setCurrentSlide(orders[0].id);
             setSlides(orders);
             setSlideData(newSlideData);
+
+            setCurrentSlide(orders[0].id);
+
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
         }
@@ -120,7 +109,7 @@ const MainLayout: React.FC = () => {
     useEffect(() => {
         if (!stompClientRef.current || !currentSlide) return;
 
-        // subscriptionRef.current?.unsubscribe();
+        subscriptionRef.current?.unsubscribe();
 
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
         console.log("슬라이드 구독 시작:", topic);
@@ -144,7 +133,6 @@ const MainLayout: React.FC = () => {
             }));
         });
     }, [currentSlide]);
-
 
 
     const normalizeShapes = (shapes: Shape[]): Shape[] => {
@@ -178,12 +166,16 @@ const MainLayout: React.FC = () => {
         const slide = data[currentSlide];
 
         const payload = {
-            lastRevisionUserId: "admin",
+            slide_id: currentSlide,
+            presentation_id: presentationId,
+            title: "Untitled",
+            last_revision_user_id: "admin",
             data: {
                 shapes: normalizeShapes(slide.shapes),
                 texts: normalizeTexts(slide.texts),
             },
         };
+
 
         const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
         console.log("WebSocket 데이터 전송 대상:", destination);
@@ -196,7 +188,7 @@ const MainLayout: React.FC = () => {
     };
 
     const subscribeToStructure = (client: Client) => {
-        const topic = `/topic/struct/presentation.${presentationId}`;
+        const topic = `/topic/presentation.${presentationId}`;
         console.log("구조 구독 시작:", topic);
 
         client.subscribe(topic, (message) => {
@@ -205,7 +197,20 @@ const MainLayout: React.FC = () => {
 
             const { type, payload } = parsed;
 
-            if (type === "SLIDE_ADD" || type === "STRUCTURE_UPDATE" || type === "SLIDE_DELETE") {
+            if (type === "SLIDE_ADD") {
+                const { slide_id, order } = payload;
+
+                setSlides(prev => {
+                    const updated = [...prev, { id: slide_id, order }];
+                    return updated.sort((a, b) => a.order - b.order);
+                });
+
+                setSlideData(prev => ({
+                    ...prev,
+                    [slide_id]: { shapes: [], texts: [] },
+                }));
+
+            } else if (type === "STRUCTURE_UPDATED" || type === "SLIDE_DELETE") {
                 const slideList = payload.slides || [];
 
                 const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
@@ -214,10 +219,7 @@ const MainLayout: React.FC = () => {
                 slideList.forEach((slide: {
                     slide_id: string;
                     order: number;
-                    data?: {
-                        shapes?: Shape[];
-                        texts?: TextItem[];
-                    };
+                    data?: { shapes?: Shape[]; texts?: TextItem[] };
                 }) => {
                     const id = slide.slide_id;
 
@@ -229,16 +231,20 @@ const MainLayout: React.FC = () => {
                     orders.push({ id, order: slide.order ?? 9999 });
                 });
 
-
                 orders.sort((a, b) => a.order - b.order);
-                console.log("구조 수신: ", orders);
 
                 setSlides(orders);
                 setSlideData(newSlideData);
-                if (orders.length > 0) setCurrentSlide(orders[0].id);
+
+                if (orders.length > 0 && (!currentSlide || currentSlide === "")) {
+                    setCurrentSlide(orders[0].id);
+                }
+            } else {
+                console.warn("알 수 없는 구조 메시지 type:", type);
             }
         });
     };
+
 
 
     const handleAddSlide = async () => {
@@ -259,25 +265,12 @@ const MainLayout: React.FC = () => {
             setSlideData(newData);
             setCurrentSlide(newId);
 
-            const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
-            const payload = {
-                type: "SLIDE_ADD",
-                payload: {
-                    slide_id: newId,
-                    order: newOrder,
-                },
-            };
 
-            console.log("[WebSocket 구조 전송]", destination, payload);
-
-            stompClientRef.current?.publish({
-                destination,
-                body: JSON.stringify(payload),
-            });
         } catch (err) {
             console.error("슬라이드 추가 실패:", err);
         }
     };
+
 
 
     const handleDeleteSlide = async (slideId: string) => {
@@ -294,7 +287,11 @@ const MainLayout: React.FC = () => {
         setSlideData(newSlideData);
 
         if (currentSlide === slideId) {
-            setCurrentSlide(newSlides[0].id);
+            if (newSlides.length > 0) {
+                setCurrentSlide(newSlides[0].id);
+            } else {
+                setCurrentSlide("");
+            }
         }
 
         await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
@@ -309,37 +306,24 @@ const MainLayout: React.FC = () => {
             }),
         });
 
-        const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
-        const payload = {
-            type: "SLIDE_DELETE",
-            payload: {
-                presenation_id: presentationId,
-                slides: newSlides.map(s => ({
-                    slide_id: s.id,
-                    order: s.order,
-                })),
-            },
-        };
-
-        console.log("[WebSocket 구조 전송]", destination, payload);
-
-        stompClientRef.current?.publish({
-            destination,
-            body: JSON.stringify(payload),
-        });
     };
+
 
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Backspace" && !isTyping && slides.length > 1) {
-                e.preventDefault();
-                handleDeleteSlide(currentSlide);
+                if (selectedShapeId === null && selectedTextId === null) {
+                    e.preventDefault();
+                    handleDeleteSlide(currentSlide);
+                }
             }
         };
+
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [currentSlide, slides, isTyping]);
+    }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId]);
+
 
 
     const handleReorderSlides = async (newOrder: string[]) => {
@@ -361,25 +345,8 @@ const MainLayout: React.FC = () => {
             }),
         });
 
-        const destination = `/app/slide.edit.struct.presentation.${presentationId}`;
-        const payload = {
-            type: "STRUCTURE_UPDATE",
-            payload: {
-                presenation_id: presentationId,
-                slides: updatedSlides.map(s => ({
-                    slide_id: s.id,
-                    order: s.order,
-                })),
-            },
-        };
-
-        console.log("[WebSocket 구조 전송]", destination, payload);
-
-        stompClientRef.current?.publish({
-            destination,
-            body: JSON.stringify(payload),
-        });
     };
+
 
 
     const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
@@ -429,33 +396,37 @@ const MainLayout: React.FC = () => {
 
     return (
         <div className="main-layout">
-            <Header variant="main" />
+            <Header variant="main"/>
             <div className="content">
                 <Sidebar variant="main"
-                    slides={slides.map(s => s.id)}
-                    currentSlide={currentSlide}
-                    setCurrentSlide={setCurrentSlide}
-                    onAddSlide={handleAddSlide}
-                    thumbnails={thumbnails}
-                    onReorderSlides={handleReorderSlides}
+                         slides={slides.map(s => s.id)}
+                         currentSlide={currentSlide}
+                         setCurrentSlide={setCurrentSlide}
+                         onAddSlide={handleAddSlide}
+                         thumbnails={thumbnails}
+                         onReorderSlides={handleReorderSlides}
                 />
                 <div className="canvas-container">
-                    <Canvas
-                        activeTool={activeTool}
-                        selectedColor={selectedColor}
-                        setActiveTool={setActiveTool}
-                        shapes={slideData[currentSlide]?.shapes || []}
-                        texts={slideData[currentSlide]?.texts || []}
-                        setShapes={(updater) => updateShapes(updater)}
-                        setTexts={(updater) => updateTexts(updater)}
-                        currentSlide={currentSlide}
-                        updateThumbnail={(slideId, dataUrl) =>
-                            setThumbnails((prev) => ({ ...prev, [slideId]: dataUrl }))
-                        }
-                        sendEdit={() => broadcastFullSlideFromData(slideData)}
-                        setIsTyping={setIsTyping}
-                        defaultFontSize={defaultFontSize}
-                    />
+                    {currentSlide && slideData[currentSlide] && (
+                        <Canvas
+                            activeTool={activeTool}
+                            selectedColor={selectedColor}
+                            setActiveTool={setActiveTool}
+                            shapes={slideData[currentSlide]?.shapes || []}
+                            texts={slideData[currentSlide]?.texts || []}
+                            setShapes={(updater) => updateShapes(updater)}
+                            setTexts={(updater) => updateTexts(updater)}
+                            currentSlide={currentSlide}
+                            updateThumbnail={(slideId, dataUrl) =>
+                                setThumbnails((prev) => ({...prev, [slideId]: dataUrl}))
+                            }
+                            sendEdit={() => broadcastFullSlideFromData(slideData)}
+                            setIsTyping={setIsTyping}
+                            defaultFontSize={defaultFontSize}
+                            onSelectShape={(id) => setSelectedShapeId(id)}
+                            onSelectText={(id) => setSelectedTextId(id)}
+                        />
+                    )}
                     <Toolbar
                         activeTool={activeTool}
                         setActiveTool={setActiveTool}
