@@ -1,0 +1,25 @@
+.history {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.history-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.history-canvas {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.history-canvas .whiteboard-container {
+    width: 800px;
+    height: 450px;
+    margin: 0 auto;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}

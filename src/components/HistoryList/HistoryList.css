@@ -1,0 +1,58 @@
+.history-right {
+    padding: 20px;
+    background: #E5E5E5;
+}
+
+.history-title {
+    font-size: 30px;
+    font-weight: bold;
+    margin:0 auto 20px auto;
+}
+
+.history-group {
+    margin-bottom: 20px;
+}
+
+.history-month {
+    font-size: 14px;
+    color: gray;
+    margin-bottom: 5px;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 12px;
+    padding: 10px 14px;
+    background: #f0f0f0;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    box-sizing: border-box;
+    border: 3px solid #E5E5E5;
+}
+
+.history-item.active {
+    border: 3px solid #d8b154;
+}
+
+.history-item span {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.history-restore-button {
+    position: absolute;
+    right: -100px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: white;
+    border: 1px solid #ccc;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    cursor: pointer;
+}

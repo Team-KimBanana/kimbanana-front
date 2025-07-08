@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Client, StompSubscription } from "@stomp/stompjs";
 
-import Header from "./Header/Header";
-import Sidebar from "./Sidebar/Sidebar";
-import Canvas from "./Canvas/Canvas";
-import Toolbar from "./Toolbar/Toolbar";
+import Header from "../components/Header/Header.tsx";
+import Sidebar from "../components/Sidebar/Sidebar.tsx";
+import Canvas from "../components/Canvas/Canvas.tsx";
+import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
-import { Shape, TextItem, ReceivedSlide } from "../types/types";
+import { Shape, TextItem, ReceivedSlide } from "../types/types.ts";
 import "./MainLayout.css";
 
 const presentationId = "p1";
@@ -109,9 +109,9 @@ const MainLayout: React.FC = () => {
             });
 
             orders.sort((a, b) => a.order - b.order);
+            setCurrentSlide(orders[0].id);
             setSlides(orders);
             setSlideData(newSlideData);
-            setCurrentSlide(orders[0].id);
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
         }
@@ -281,7 +281,7 @@ const MainLayout: React.FC = () => {
 
 
     const handleDeleteSlide = async (slideId: string) => {
-        if (!currentSlide || slides.length === 1) return;
+        if (slides.length === 1) return;
 
         const newSlides = slides
             .filter(s => s.id !== slideId)
@@ -365,7 +365,7 @@ const MainLayout: React.FC = () => {
         const payload = {
             type: "STRUCTURE_UPDATE",
             payload: {
-                presentation_id: presentationId,
+                presenation_id: presentationId,
                 slides: updatedSlides.map(s => ({
                     slide_id: s.id,
                     order: s.order,
@@ -429,9 +429,9 @@ const MainLayout: React.FC = () => {
 
     return (
         <div className="main-layout">
-            <Header />
+            <Header variant="main" />
             <div className="content">
-                <Sidebar
+                <Sidebar variant="main"
                     slides={slides.map(s => s.id)}
                     currentSlide={currentSlide}
                     setCurrentSlide={setCurrentSlide}

@@ -20,6 +20,7 @@ interface CanvasProps {
     sendEdit: () => void;
     setIsTyping: (typing: boolean) => void;
     defaultFontSize: number;
+    isHistoryPage?: boolean;
 }
 
 const drawTrianglePoints = (
@@ -54,6 +55,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                            sendEdit,
                                            setIsTyping,
                                            defaultFontSize,
+                                           isHistoryPage,
                                        }) => {
     const [isComposing, setIsComposing] = useState(false);
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
@@ -308,17 +310,32 @@ const Canvas: React.FC<CanvasProps> = ({
         return activeTool === "cursor" && selectedTextId === id && editingText?.id !== id;
     };
 
+    const originalWidth = 1000;
+    const originalHeight = 563;
+
+    const displayWidth = isHistoryPage ? 800 : originalWidth;
+    const displayHeight = isHistoryPage ? 450 : originalHeight;
+    const scale = isHistoryPage
+        ? {
+            x: displayWidth / originalWidth,
+            y: displayHeight / originalHeight,
+        }
+        : { x: 1, y: 1 };
+
 
     return (
         <div className="whiteboard-container" style={{ position: "relative" }}>
             <Stage
                 ref={stageRef}
-                width={1000}
-                height={563}
+                width={displayWidth}
+                height={displayHeight}
+                scale={scale}
+                x={(displayWidth - originalWidth * scale.x) / 2}
+                y={(displayHeight - originalHeight * scale.y) / 2}
                 onMouseDown={handleMouseDown}
             >
                 <Layer>
-                    <Rect width={1000} height={563} fill="white" ref={backgroundRef} />
+                    <Rect width={originalWidth} height={originalHeight} fill="white" ref={backgroundRef} />
 
                     {shapes.map((shape) => (
                         <React.Fragment key={shape.id}>
