@@ -107,6 +107,7 @@ const MainLayout: React.FC = () => {
         }
     };
 
+
     useEffect(() => {
         if (!stompClientRef.current || !currentSlide) return;
 
@@ -117,24 +118,32 @@ const MainLayout: React.FC = () => {
 
         subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
             console.log("슬라이드 원본 메시지 수신:", message.body);
-            const parsed = JSON.parse(message.body);
-            console.log("슬라이드 수신 메시지:", parsed);
 
-            if (!parsed.data) {
-                console.warn("수신 데이터에 data가 없음:", parsed);
-                return;
+            try {
+                const parsed = JSON.parse(message.body);
+                console.log("슬라이드 수신 메시지:", parsed);
+
+                const data = typeof parsed.data === "string"
+                    ? JSON.parse(parsed.data)
+                    : parsed.data;
+
+                if (!data) {
+                    console.warn("슬라이드 수신 데이터 파싱 실패:", parsed);
+                    return;
+                }
+
+                setSlideData(prev => ({
+                    ...prev,
+                    [currentSlide]: {
+                        shapes: data.shapes || [],
+                        texts: data.texts || [],
+                    },
+                }));
+            } catch (err) {
+                console.error("슬라이드 수신 메시지 처리 중 오류 발생:", err);
             }
-
-            setSlideData(prev => ({
-                ...prev,
-                [currentSlide]: {
-                    shapes: parsed.data.shapes || [],
-                    texts: parsed.data.texts || [],
-                },
-            }));
         });
     }, [currentSlide]);
-
 
     const normalizeShapes = (shapes: Shape[]): Shape[] => {
         return shapes.map(shape => ({
@@ -146,7 +155,7 @@ const MainLayout: React.FC = () => {
             radius: shape.radius || 0,
             width: shape.width || 0,
             height: shape.height || 0,
-            points: shape.points || []
+            points: shape.points || [],
         }));
     };
 
@@ -156,10 +165,9 @@ const MainLayout: React.FC = () => {
             text: text.text,
             x: text.x,
             y: text.y,
-            color: text.color || "#000000"
+            color: text.color || "#000000",
         }));
     };
-
 
     const broadcastFullSlideFromData = (data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } }) => {
         if (isTyping) return;
@@ -168,25 +176,24 @@ const MainLayout: React.FC = () => {
 
         const payload = {
             slide_id: currentSlide,
-            presentation_id: presentationId,
-            title: "Untitled",
             last_revision_user_id: "admin",
-            data: {
+            data: JSON.stringify({
                 shapes: normalizeShapes(slide.shapes),
                 texts: normalizeTexts(slide.texts),
-            },
+            }),
         };
-
 
         const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
         console.log("WebSocket 데이터 전송 대상:", destination);
-        console.log("WebSocket 데이터 전송: ", payload);
+        console.log("WebSocket 데이터 전송:", payload);
 
         stompClientRef.current?.publish({
             destination,
             body: JSON.stringify(payload),
         });
     };
+
+
 
     const subscribeToStructure = (client: Client) => {
         const topic = `/topic/presentation.${presentationId}`;
