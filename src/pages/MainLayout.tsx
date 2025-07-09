@@ -16,8 +16,6 @@ const WS_URL = import.meta.env.VITE_WS_URL;
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
-    const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
-    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
     const [currentSlide, setCurrentSlide] = useState<string>("");
     const [slideData, setSlideData] = useState<{ [key: string]: { shapes: Shape[]; texts: TextItem[] } }>({});
@@ -313,16 +311,14 @@ const MainLayout: React.FC = () => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Backspace" && !isTyping && slides.length > 1) {
-                if (selectedShapeId === null && selectedTextId === null) {
-                    e.preventDefault();
-                    handleDeleteSlide(currentSlide);
-                }
+                e.preventDefault();
+                handleDeleteSlide(currentSlide);
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId]);
+    }, [currentSlide, slides, isTyping]);
 
 
 
@@ -423,8 +419,6 @@ const MainLayout: React.FC = () => {
                             sendEdit={() => broadcastFullSlideFromData(slideData)}
                             setIsTyping={setIsTyping}
                             defaultFontSize={defaultFontSize}
-                            onSelectShape={(id) => setSelectedShapeId(id)}
-                            onSelectText={(id) => setSelectedTextId(id)}
                         />
                     )}
                     <Toolbar
