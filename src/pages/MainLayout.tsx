@@ -24,6 +24,9 @@ const MainLayout: React.FC = () => {
     const [defaultFontSize, setDefaultFontSize] = useState(20);
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
+    const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+
 
     useEffect(() => {
         const client = new Client({
@@ -310,7 +313,13 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Backspace" && !isTyping && slides.length > 1) {
+            if (
+                e.key === "Backspace" &&
+                !isTyping &&
+                slides.length > 1 &&
+                selectedShapeId === null &&
+                selectedTextId === null
+            ) {
                 e.preventDefault();
                 handleDeleteSlide(currentSlide);
             }
@@ -318,7 +327,8 @@ const MainLayout: React.FC = () => {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [currentSlide, slides, isTyping]);
+    }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId]);
+
 
 
 
@@ -419,6 +429,8 @@ const MainLayout: React.FC = () => {
                             sendEdit={() => broadcastFullSlideFromData(slideData)}
                             setIsTyping={setIsTyping}
                             defaultFontSize={defaultFontSize}
+                            onSelectShape={setSelectedShapeId}
+                            onSelectText={setSelectedTextId}
                         />
                     )}
                     <Toolbar

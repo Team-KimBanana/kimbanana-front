@@ -21,6 +21,8 @@ interface CanvasProps {
     setIsTyping: (typing: boolean) => void;
     defaultFontSize: number;
     isHistoryPage?: boolean;
+    onSelectShape: (id: string | null) => void;
+    onSelectText: (id: string | null) => void;
 }
 
 const drawTrianglePoints = (
@@ -56,6 +58,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                            setIsTyping,
                                            defaultFontSize,
                                            isHistoryPage,
+                                           onSelectShape,
+                                           onSelectText
                                        }) => {
     const [isComposing, setIsComposing] = useState(false);
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
@@ -197,6 +201,8 @@ const Canvas: React.FC<CanvasProps> = ({
             setSelectedShapeId(null);
             setSelectedTextId(null);
             setEditingText(null);
+            onSelectShape(null);
+            onSelectText(null);
         }
     };
 
@@ -281,10 +287,12 @@ const Canvas: React.FC<CanvasProps> = ({
             setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId))
             sendEdit();
             setSelectedShapeId(null);
+            onSelectShape(null);
         } else if (selectedTextId !== null) {
             setTexts((prev) => prev.filter((text) => text.id !== selectedTextId));
             sendEdit();
-            setSelectedTextId(null);
+            setSelectedTextId(null)
+            onSelectText(null);
         }
     };
 
@@ -353,6 +361,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
                                         setActiveTool("cursor");
+                                        onSelectShape(String(shape.id));
+                                        onSelectText(null);
                                     }}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
@@ -387,6 +397,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
                                         setActiveTool("cursor");
+                                        onSelectShape(String(shape.id));
+                                        onSelectText(null);
                                     }}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
@@ -420,6 +432,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
                                         setActiveTool("cursor");
+                                        onSelectShape(String(shape.id));
+                                        onSelectText(null);
                                     }}
                                     onDragEnd={(e) => {
                                         const { x, y } = e.target.position();
@@ -472,6 +486,8 @@ const Canvas: React.FC<CanvasProps> = ({
                             onClick={() => {
                                 setSelectedTextId(text.id);
                                 setActiveTool("cursor");
+                                onSelectText(String(text.id));
+                                onSelectShape(null);
                             }}
                             onDblClick={() => {
                                 setEditingText(text);
