@@ -186,19 +186,52 @@ const MainLayout: React.FC = () => {
     }, [currentSlide]);
 
     const normalizeShapes = (shapes: Shape[]): Shape[] => {
-        return shapes.map(shape => ({
-            type: shape.type,
-            x: shape.x,
-            y: shape.y,
-            color: shape.color || "#000000",
-            id: shape.id,
-            radiusX: shape.radiusX ?? 50,
-            radiusY: shape.radiusY ?? 50,
-            width: shape.width || 0,
-            height: shape.height || 0,
-            points: shape.points || [],
-            rotation: shape.rotation ?? 0,
-        }));
+        return shapes.map((shape) => {
+            const base = {
+                id: shape.id,
+                type: shape.type,
+                x: shape.x,
+                y: shape.y,
+                rotation: shape.rotation ?? 0,
+            };
+
+            if (shape.type === "circle") {
+                return {
+                    ...base,
+                    radiusX: shape.radiusX ?? 50,
+                    radiusY: shape.radiusY ?? 50,
+                    color: shape.color || "#000000",
+                };
+            }
+
+            if (shape.type === "rectangle") {
+                return {
+                    ...base,
+                    width: shape.width || 0,
+                    height: shape.height || 0,
+                    color: shape.color || "#000000",
+                };
+            }
+
+            if (shape.type === "triangle") {
+                return {
+                    ...base,
+                    points: shape.points || [],
+                    color: shape.color || "#000000",
+                };
+            }
+
+            if (shape.type === "image") {
+                return {
+                    ...base,
+                    width: shape.width || 0,
+                    height: shape.height || 0,
+                    imageSrc: shape.imageSrc || "",
+                };
+            }
+
+            return shape;
+        });
     };
 
     const normalizeTexts = (texts: TextItem[]): TextItem[] => {
@@ -460,18 +493,23 @@ const MainLayout: React.FC = () => {
         });
     };
 
-    const handleImageUpload = (imageDataUrl: string) => {
-        const newImage: Shape = {
-            id: Date.now(),
-            type: "image",
-            x: 200,
-            y: 150,
-            width: 300,
-            height: 200,
-            imageSrc: imageDataUrl,
+    const handleImageUpload = (imageUrl: string) => {
+        const img = new window.Image();
+        img.onload = () => {
+            const newImage: Shape = {
+                id: Date.now(),
+                type: "image",
+                x: 200,
+                y: 150,
+                width: img.width,
+                height: img.height,
+                imageSrc: imageUrl,
+            };
+            updateShapes((prev) => [...prev, newImage]);
         };
-        updateShapes((prev) => [...prev, newImage]);
+        img.src = imageUrl;
     };
+
 
     return (
         <div className="main-layout">

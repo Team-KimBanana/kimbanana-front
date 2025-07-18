@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Stage, Layer, Rect, Ellipse, Line, Transformer, Text } from "react-konva";
+import { Stage, Layer, Rect, Ellipse, Line, Transformer, Text, Image } from "react-konva";
 import { Shape, TextItem} from "../../types/types.ts";
 import Konva from "konva";
 import "./Canvas.css";
 import {KonvaEventObject} from "konva/lib/Node";
-import { Image } from "react-konva";
 import useImage from "use-image";
 
 interface CanvasProps {
@@ -239,6 +238,9 @@ const Canvas: React.FC<CanvasProps> = ({
                         index % 2 === 0 ? point * scaleX : point * scaleY
                     );
                     newShape.rotation = node.rotation();
+                } else if (shape.type === "image") {
+                    newShape.width = node.width() * scaleX;
+                    newShape.height = node.height() * scaleY;
                 }
 
                 node.scaleX(1);
@@ -472,6 +474,9 @@ const Canvas: React.FC<CanvasProps> = ({
                                         );
                                         sendEdit();
                                     }}
+                                    registerRef={(node) => {
+                                        if (node) shapeRefs.current.set(shape.id, node);
+                                    }}
                                 />
                             )}
                         </React.Fragment>
@@ -640,11 +645,12 @@ const CanvasImage: React.FC<{
     shape: Shape;
     onSelect: () => void;
     onDrag: (x: number, y: number) => void;
-}> = ({ shape, onSelect, onDrag }) => {
+    registerRef: (node: Konva.Image | null) => void;
+}> = ({ shape, onSelect, onDrag, registerRef }) => {
     const [image] = useImage(shape.imageSrc || "", "anonymous");
-
     return (
         <Image
+            ref={registerRef}
             image={image}
             x={shape.x}
             y={shape.y}

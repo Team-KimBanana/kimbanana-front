@@ -11,6 +11,39 @@ interface ToolbarProps {
     onImageUpload: (imageDataUrl: string) => void;
 }
 
+const resizeImage = (file: File, maxWidth = 1000): Promise<File> => {
+    return new Promise((resolve) => {
+        const img = new Image();
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                const scale = maxWidth / img.width;
+                canvas.width = maxWidth;
+                canvas.height = img.height * scale;
+
+                const ctx = canvas.getContext("2d")!;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob((blob) => {
+                    if (!blob) return;
+                    const resizedFile = new File([blob], file.name, {
+                        type: "image/jpeg",
+                        lastModified: Date.now(),
+                    });
+                    resolve(resizedFile);
+                }, "image/jpeg", 0.8);
+            };
+
+            img.src = e.target?.result as string;
+        };
+
+        reader.readAsDataURL(file);
+    });
+};
+
+
 const Toolbar: React.FC<ToolbarProps> = ({
                                              setActiveTool,
                                              activeTool,
@@ -154,35 +187,45 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                 accept="image/*"
                                 id="image-upload"
                                 style={{ display: "none" }}
-                                onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                        const reader = new FileReader();
-                                        reader.onload = () => {
-                                            const imageDataUrl = reader.result as string;
-                                            onImageUpload(imageDataUrl);
-                                        };
-                                        reader.readAsDataURL(file);
-                                    }
-                                }}
 
-                                // onChange={async (e) => {
+                                // onChange={(e) => {
                                 //     const file = e.target.files?.[0];
                                 //     if (file) {
-                                //         const formData = new FormData();
-                                //         formData.append("file", file);
-                                //
-                                //         const res = await fetch("https://~~~~/api/upload", {
-                                //             method: "POST",
-                                //             body: formData,
-                                //         });
-                                //
-                                //         const result = await res.json();
-                                //         const imageUrl = result.url;
-                                //
-                                //         onImageUpload(imageUrl);
+                                //         const reader = new FileReader();
+                                //         reader.onload = () => {
+                                //             const imageDataUrl = reader.result as string;
+                                //             onImageUpload(imageDataUrl);
+                                //         };
+                                //         reader.readAsDataURL(file);
                                 //     }
                                 // }}
+
+                                onChange={async (e) => {
+                                    try {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+
+                                        const resized = await resizeImage(file);
+
+                                        const formData = new FormData();
+                                        formData.append("file", resized);
+
+                                        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/slides/upload-image`, {
+                                            method: "POST",
+                                            body: formData,
+                                        });
+
+                                        if (!res.ok) throw new Error("업로드 실패");
+
+                                        const result = await res.json();
+                                        const imageUrl = result.url;
+
+                                        onImageUpload(imageUrl);
+                                    } catch (err) {
+                                        console.error("이미지 업로드 중 에러 발생:", err);
+                                        alert("이미지 업로드에 실패했습니다.");
+                                    }
+                                }}
 
                             />
 
