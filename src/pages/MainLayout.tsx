@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useRef} from "react";
+import ReactDOM from "react-dom/client";
 import {Client, StompSubscription} from "@stomp/stompjs";
 
 import Header from "../components/Header/Header.tsx";
@@ -7,6 +8,7 @@ import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
 import {Shape, TextItem, ReceivedSlide} from "../types/types.ts";
+import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import "./MainLayout.css";
 
 const presentationId = "p1";
@@ -26,7 +28,30 @@ const MainLayout: React.FC = () => {
     const subscriptionRef = useRef<StompSubscription | null>(null);
     const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const lastBroadcastData = useRef<string>("");
 
+
+    const renderSlideThumbnail = (slideId: string, data: { shapes: Shape[]; texts: TextItem[] }) => {
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+
+        const root = ReactDOM.createRoot(container);
+
+        const handleRendered = (id: string, dataUrl: string) => {
+            setThumbnails((prev) => ({ ...prev, [id]: dataUrl }));
+            root.unmount();
+            document.body.removeChild(container);
+        };
+
+        root.render(
+            <ThumbnailRenderer
+                slideId={slideId}
+                slideData={data}
+                onRendered={handleRendered}
+            />
+        );
+    };
 
     useEffect(() => {
         const client = new Client({
@@ -71,53 +96,68 @@ const MainLayout: React.FC = () => {
 
                 const defaultSlides = [{ id: defaultSlideId, order: defaultOrder }];
                 const defaultData = {
-                    [defaultSlideId]: { shapes: [], texts: [] },
+                    [defaultSlideId]: {
+                        shapes: [],
+                        texts: [],
+                    },
                 };
 
                 setSlides(defaultSlides);
                 setSlideData(defaultData);
                 setCurrentSlide(defaultSlideId);
-
                 return;
             }
-
-
 
             const newSlideData: Record<string, { shapes: Shape[]; texts: TextItem[] }> = {};
             const orders: { id: string; order: number }[] = [];
 
             slideList.forEach((slide) => {
                 const id = slide.slide_id;
-                newSlideData[id] = {
-                    shapes: slide.data?.shapes || [],
-                    texts: slide.data?.texts || [],
-                };
-                orders.push({id, order: slide.order});
-            });
+                let parsedData: { shapes?: Shape[]; texts?: TextItem[] } = { shapes: [], texts: [] };
 
+                try {
+                    parsedData =
+                        typeof slide.data === "string"
+                            ? JSON.parse(slide.data)
+                            : slide.data || {};
+                } catch (err) {
+                    console.warn(`슬라이드 데이터 파싱 실패 (slide_id: ${id})`, err);
+                }
+
+                newSlideData[id] = {
+                    shapes: parsedData.shapes || [],
+                    texts: parsedData.texts || [],
+                };
+
+                orders.push({ id, order: slide.order });
+            });
 
             orders.sort((a, b) => a.order - b.order);
             setSlides(orders);
             setSlideData(newSlideData);
-
             setCurrentSlide(orders[0].id);
+
+            orders.forEach(({ id }) => {
+                const data = newSlideData[id];
+                renderSlideThumbnail(id, data);
+            });
 
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
         }
+
     };
 
 
     useEffect(() => {
         if (!stompClientRef.current || !currentSlide) return;
 
-        subscriptionRef.current?.unsubscribe();
+        // subscriptionRef.current?.unsubscribe();
 
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
         console.log("슬라이드 구독 시작:", topic);
 
         subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
-            console.log("슬라이드 원본 메시지 수신:", message.body);
 
             try {
                 const parsed = JSON.parse(message.body);
@@ -152,10 +192,12 @@ const MainLayout: React.FC = () => {
             y: shape.y,
             color: shape.color || "#000000",
             id: shape.id,
-            radius: shape.radius || 0,
+            radiusX: shape.radiusX ?? 50,
+            radiusY: shape.radiusY ?? 50,
             width: shape.width || 0,
             height: shape.height || 0,
             points: shape.points || [],
+            rotation: shape.rotation ?? 0,
         }));
     };
 
@@ -166,32 +208,55 @@ const MainLayout: React.FC = () => {
             x: text.x,
             y: text.y,
             color: text.color || "#000000",
+            fontSize: text.fontSize || 18,
         }));
     };
+
 
     const broadcastFullSlideFromData = (data: { [key: string]: { shapes: Shape[]; texts: TextItem[] } }) => {
         if (isTyping) return;
 
         const slide = data[currentSlide];
+        if (!slide) return;
+
+        const currentSlideOrder = slides.find(s => s.id === currentSlide)?.order ?? 9999;
+        const offset = new Date().getTimezoneOffset() * 60000;
+        const lastRevisionDate = new Date(Date.now() - offset).toISOString().slice(0, -1);
 
         const payload = {
             slide_id: currentSlide,
-            last_revision_user_id: "admin",
+            order: currentSlideOrder,
+            last_revision_user_id: "Hyehyun",
+            last_revision_date: lastRevisionDate,
             data: JSON.stringify({
                 shapes: normalizeShapes(slide.shapes),
                 texts: normalizeTexts(slide.texts),
             }),
         };
 
-        const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
-        console.log("WebSocket 데이터 전송 대상:", destination);
-        console.log("WebSocket 데이터 전송:", payload);
+        const serializedPayload = JSON.stringify(payload);
 
-        stompClientRef.current?.publish({
-            destination,
-            body: JSON.stringify(payload),
-        });
+        if (lastBroadcastData.current === serializedPayload) return;
+        lastBroadcastData.current = serializedPayload;
+
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+
+        debounceTimerRef.current = setTimeout(() => {
+            const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
+            console.log("WebSocket 데이터 전송 대상:", destination);
+            console.log("WebSocket 데이터 전송:", payload);
+
+            stompClientRef.current?.publish({
+                destination,
+                body: serializedPayload,
+            });
+
+            debounceTimerRef.current = null;
+        }, 300);
     };
+
 
 
 
@@ -273,6 +338,7 @@ const MainLayout: React.FC = () => {
             setSlideData(newData);
             setCurrentSlide(newId);
 
+            setTimeout(() => broadcastFullSlideFromData(newData), 0);
 
         } catch (err) {
             console.error("슬라이드 추가 실패:", err);

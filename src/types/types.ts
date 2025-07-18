@@ -11,8 +11,10 @@ export interface Shape {
     radiusX?: number;
     radiusY?: number;
     points?: number[];
+    rotation?: number;
     color?: string;
     imageSrc?: string;
+
 }
 
 export interface TextItem {

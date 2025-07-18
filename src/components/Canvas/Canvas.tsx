@@ -116,7 +116,8 @@ const Canvas: React.FC<CanvasProps> = ({
                 type: "circle",
                 x,
                 y,
-                radius: 50,
+                radiusX: 50,
+                radiusY: 50,
                 color: "#B0B0B0",
                 id: Date.now(),
             };
@@ -128,6 +129,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 points: drawTrianglePoints(x, y),
                 color: "#B0B0B0",
                 id: Date.now(),
+                rotation: 0,
             };
         }
 
@@ -236,6 +238,7 @@ const Canvas: React.FC<CanvasProps> = ({
                     newShape.points = originalPoints.map((point, index) =>
                         index % 2 === 0 ? point * scaleX : point * scaleY
                     );
+                    newShape.rotation = node.rotation();
                 }
 
                 node.scaleX(1);
@@ -425,6 +428,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                     y={shape.y!}
                                     points={shape.points!}
                                     fill={shape.color}
+                                    rotation={shape.rotation || 0}
                                     closed
                                     onTransformEnd={() => handleTransformEnd(shape.id)}
                                     draggable={isDraggableShape(shape.id)}
