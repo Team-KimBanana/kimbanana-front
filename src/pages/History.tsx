@@ -21,19 +21,16 @@ const History: React.FC = () => {
             texts: TextItem[];
         };
     } = {
-        "2025년 2월 13일 오전 11:04": {
-            shapes: [
-                { id: 1, type: "rectangle", x: 100, y: 100, width: 200, height: 100, color: "#FF0000" },
-                { id: 2, type: "circle", x: 400, y: 200, radius: 50, color: "#00AAFF" },
-            ],
-            texts: [
-                { id: 1, text: "예시 텍스트", x: 300, y: 150, color: "#000000" },
-            ],
+        "2025년 2월 13일 12:00": {
+            shapes: [{ id: 1, type: "rectangle", x: 100, y: 100, width: 200, height: 100, color: "#FF0000" }],
+            texts: [],
         },
-        "2025년 2월 11일 오후 4:00": {
-            shapes: [
-                { id: 3, type: "triangle", x: 300, y: 200, points: [0, -50, -50, 50, 50, 50], color: "#00CC66" },
-            ],
+        "2025년 2월 13일 11:04": {
+            shapes: [{ id: 2, type: "circle", x: 400, y: 200, radius: 50, color: "#00AAFF" }],
+            texts: [],
+        },
+        "2025년 2월 11일 16:00": {
+            shapes: [{ id: 3, type: "triangle", x: 300, y: 200, points: [0, -50, -50, 50, 50, 50], color: "#00CC66" }],
             texts: [],
         },
     };
@@ -46,7 +43,6 @@ const History: React.FC = () => {
     };
 
     useEffect(() => {
-        // 초기 선택값 설정 (가장 최신 값)
         const defaultTimestamp = Object.keys(historyData)[0];
         handleSelect(defaultTimestamp);
     }, []);
@@ -79,6 +75,8 @@ const History: React.FC = () => {
                         setIsTyping={() => {}}
                         defaultFontSize={20}
                         isHistoryPage={true}
+                        onSelectShape={() => {}}
+                        onSelectText={() => {}}
                     />
                 </div>
 

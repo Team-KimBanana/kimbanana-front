@@ -466,6 +466,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                         setSelectedShapeId(shape.id);
                                         setSelectedTextId(null);
                                         setActiveTool("cursor");
+                                        onSelectShape(String(shape.id));
+                                        onSelectText(null);
                                     }}
                                     onDrag={(newX, newY) => {
                                         const updated = { ...shape, x: newX, y: newY };
@@ -474,10 +476,17 @@ const Canvas: React.FC<CanvasProps> = ({
                                         );
                                         sendEdit();
                                     }}
+                                    onResize={(updatedShape) => {
+                                        setShapes((prev) =>
+                                            prev.map((s) => (s.id === updatedShape.id ? updatedShape : s))
+                                        );
+                                        sendEdit();
+                                    }}
                                     registerRef={(node) => {
                                         if (node) shapeRefs.current.set(shape.id, node);
                                     }}
                                 />
+
                             )}
                         </React.Fragment>
                     ))}
@@ -641,28 +650,72 @@ const Canvas: React.FC<CanvasProps> = ({
         </div>
     );
 };
+
 const CanvasImage: React.FC<{
     shape: Shape;
     onSelect: () => void;
     onDrag: (x: number, y: number) => void;
+    onResize: (updated: Shape) => void;
     registerRef: (node: Konva.Image | null) => void;
-}> = ({ shape, onSelect, onDrag, registerRef }) => {
+}> = ({ shape, onSelect, onDrag, onResize, registerRef }) => {
     const [image] = useImage(shape.imageSrc || "", "anonymous");
+    const imageRef = useRef<Konva.Image | null>(null);
+    const transformerRef = useRef<Konva.Transformer | null>(null);
+
+    useEffect(() => {
+        if (imageRef.current && transformerRef.current) {
+            transformerRef.current.nodes([imageRef.current]);
+            transformerRef.current.getLayer()?.batchDraw();
+        }
+    }, [image]);
+
     return (
-        <Image
-            ref={registerRef}
-            image={image}
-            x={shape.x}
-            y={shape.y}
-            width={shape.width}
-            height={shape.height}
-            draggable
-            onClick={onSelect}
-            onDragEnd={(e) => {
-                const { x, y } = e.target.position();
-                onDrag(x, y);
-            }}
-        />
+        <>
+            <Image
+                ref={(node) => {
+                    imageRef.current = node;
+                    registerRef(node);
+                }}
+                image={image}
+                x={shape.x}
+                y={shape.y}
+                width={shape.width}
+                height={shape.height}
+                draggable
+                onClick={onSelect}
+                onTransformEnd={() => {
+                    const node = imageRef.current;
+                    if (!node) return;
+
+                    const scaleX = node.scaleX();
+                    const scaleY = node.scaleY();
+
+                    const updated = {
+                        ...shape,
+                        x: node.x(),
+                        y: node.y(),
+                        width: node.width() * scaleX,
+                        height: node.height() * scaleY,
+                    };
+
+                    // scale 초기화
+                    node.scaleX(1);
+                    node.scaleY(1);
+
+                    onResize(updated);
+                }}
+                onDragEnd={(e) => {
+                    const { x, y } = e.target.position();
+                    onDrag(x, y);
+                }}
+            />
+            <Transformer
+                ref={transformerRef}
+                boundBoxFunc={(oldBox, newBox) => {
+                    return newBox.width < 5 || newBox.height < 5 ? oldBox : newBox;
+                }}
+            />
+        </>
     );
 };
 

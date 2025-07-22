@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import "./HistoryList.css";
 import { Shape, TextItem } from "../../types/types.ts";
 
@@ -14,37 +14,54 @@ interface HistoryListProps {
 }
 
 const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSelect }) => {
-    const grouped: { [month: string]: string[] } = {};
+    const grouped: { [date: string]: string[] } = {};
+
     Object.keys(historyData).forEach((timestamp) => {
-        const month = timestamp.slice(0, 9); // 예: "2025년 2월"
-        if (!grouped[month]) grouped[month] = [];
-        grouped[month].push(timestamp);
+        const parts = timestamp.split(" ");
+        const date = parts.slice(0, 3).join(" ");
+        if (!grouped[date]) grouped[date] = [];
+        grouped[date].push(timestamp);
     });
+
+    const [openDates, setOpenDates] = useState<{ [date: string]: boolean }>({});
+
+    const toggleDate = (date: string) => {
+        setOpenDates((prev) => ({
+            ...prev,
+            [date]: !prev[date],
+        }));
+    };
 
     return (
         <div className="history-right">
             <h3 className="history-title">history</h3>
 
-            {Object.entries(grouped).map(([month, items]) => (
-                <div className="history-group" key={month}>
-                    <p className="history-month">{month}</p>
-                    {items.map((item) => {
-                        const isActive = selected === item;
+            {Object.entries(grouped).map(([date, timestamps]) => (
+                <div className="history-group" key={date}>
+                    <div className="history-date" onClick={() => toggleDate(date)}>
+                        {openDates[date] ? "▼" : "▶"} {date}
+                    </div>
 
-                        return (
-                            <div
-                                key={item}
-                                className={`history-item ${isActive ? "active" : ""}`}
-                                onClick={() => onSelect(item)}
-                            >
-                                <span>{item}</span>
+                    {openDates[date] && (
+                        <div className="history-timestamps">
+                            {timestamps.map((timestamp) => {
+                                const isActive = selected === timestamp;
 
-                                {isActive && (
-                                    <div className="history-restore-button">복원하기</div>
-                                )}
-                            </div>
-                        );
-                    })}
+                                return (
+                                    <div
+                                        key={timestamp}
+                                        className={`history-item ${isActive ? "active" : ""}`}
+                                        onClick={() => onSelect(timestamp)}
+                                    >
+                                        <span>{timestamp}</span>
+                                        {isActive && (
+                                            <div className="history-restore-button">복원하기</div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             ))}
         </div>

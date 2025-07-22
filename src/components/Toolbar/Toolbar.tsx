@@ -210,15 +210,16 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                         const formData = new FormData();
                                         formData.append("file", resized);
 
-                                        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/slides/upload-image`, {
+                                        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/images/upload`, {
                                             method: "POST",
                                             body: formData,
                                         });
 
                                         if (!res.ok) throw new Error("업로드 실패");
 
-                                        const result = await res.json();
-                                        const imageUrl = result.url;
+                                        const relativeUrl = await res.text();
+                                        const imageUrl = `${import.meta.env.VITE_BASE_URL}${relativeUrl}`;
+                                        console.log("이미지 URL:", imageUrl);
 
                                         onImageUpload(imageUrl);
                                     } catch (err) {
