@@ -1,0 +1,266 @@
+/* src/components/LoginModal/LoginModal.css */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    position: relative;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(48, 39, 12, 0.1);
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+    padding: 4px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.modal-close-btn:hover {
+    color: #30270C;
+    background-color: #f0f0f0;
+}
+
+
+/* Copied from Login.css and adapted */
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #30270C;
+    margin: 0 0 8px 0;
+}
+
+.login-subtitle {
+    font-size: 14px;
+    color: #666;
+    margin: 0;
+}
+
+.register-link {
+    color: #FFD900;
+    text-decoration: none;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.register-link:hover {
+    color: #D2A742;
+    text-decoration: underline;
+}
+
+.login-form {
+    margin-bottom: 24px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #30270C;
+    margin-bottom: 8px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #FFD900;
+    box-shadow: 0 0 0 3px rgba(255, 217, 0, 0.1);
+}
+
+.form-input::placeholder {
+    color: #999;
+}
+
+.password-input-container {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s ease;
+}
+
+.password-toggle:hover {
+    color: #30270C;
+}
+
+.error-message {
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
+    border-left: 4px solid #c62828;
+}
+
+
+.login-button {
+    width: 100%;
+    padding: 14px;
+    background-color: #FFD900;
+    color: #30270C;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.login-button:hover:not(:disabled) {
+    background-color: #D2A742;
+    transform: translateY(-1px);
+}
+
+.login-button:disabled {
+    background-color: #ccc;
+    color: #666;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.divider {
+    text-align: center;
+    margin: 24px 0;
+    position: relative;
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: #e0e0e0;
+} 
+
+.divider-text {
+    padding: 0 16px;
+    font-size: 14px;
+    color: #888;
+    white-space: nowrap;
+}
+
+.social-login {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.social-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: white;
+    color: #30270C;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.social-button:hover:not(:disabled) {
+    border-color: #FFD900;
+    background-color: #fff9e6;
+}
+
+.social-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.google-button:hover:not(:disabled) {
+    border-color: #4285f4;
+    background-color: #f8f9ff;
+}
+
+.github-button:hover:not(:disabled) {
+    border-color: #333;
+    background-color: #f5f5f5;
+}
+
+.login-footer {
+    text-align: center;
+}
+
+.forgot-password {
+    color: #666;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.forgot-password:hover {
+    color: #30270C;
+    text-decoration: underline;
+}
