@@ -188,17 +188,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                 id="image-upload"
                                 style={{ display: "none" }}
 
-                                // onChange={(e) => {
-                                //     const file = e.target.files?.[0];
-                                //     if (file) {
-                                //         const reader = new FileReader();
-                                //         reader.onload = () => {
-                                //             const imageDataUrl = reader.result as string;
-                                //             onImageUpload(imageDataUrl);
-                                //         };
-                                //         reader.readAsDataURL(file);
-                                //     }
-                                // }}
 
                                 onChange={async (e) => {
                                     try {

@@ -31,7 +31,6 @@ const MainLayout: React.FC = () => {
     const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastBroadcastData = useRef<string>("");
 
-
     const renderSlideThumbnail = (slideId: string, data: { shapes: Shape[]; texts: TextItem[] }) => {
         const container = document.createElement("div");
         document.body.appendChild(container);
@@ -152,7 +151,7 @@ const MainLayout: React.FC = () => {
     useEffect(() => {
         if (!stompClientRef.current || !currentSlide) return;
 
-        // subscriptionRef.current?.unsubscribe();
+        subscriptionRef.current?.unsubscribe();
 
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
         console.log("슬라이드 구독 시작:", topic);
@@ -340,10 +339,20 @@ const MainLayout: React.FC = () => {
                 orders.sort((a, b) => a.order - b.order);
 
                 setSlides(orders);
-                setSlideData(newSlideData);
 
-                if (orders.length > 0 && (!currentSlide || currentSlide === "")) {
-                    setCurrentSlide(orders[0].id);
+                setSlideData(prev => {
+                    const newData = { ...prev };
+                    slideList.forEach((slide: ReceivedSlide) => {
+                        const id = slide.slide_id;
+                        if (!newData[id]) {
+                            newData[id] = { shapes: [], texts: [] };
+                        }
+                    });
+                    return newData;
+                });
+
+                if (slideList.length > 0 && (!currentSlide || currentSlide === "")) {
+                    setCurrentSlide(slideList[0].slide_id);
                 }
             } else {
                 console.warn("알 수 없는 구조 메시지 type:", type);
@@ -458,7 +467,6 @@ const MainLayout: React.FC = () => {
         });
 
     };
-
 
 
     const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
