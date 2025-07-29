@@ -498,7 +498,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             y={text.y}
                             text={text.text}
                             fontSize={text.fontSize || 20}
-                            fontFamily="Noto Sans KR"
+                            fontFamily= "Pretendard"
                             fill={text.color}
                             draggable={isDraggableText(text.id)}
                             onClick={() => {
@@ -564,7 +564,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             top,
                             left,
                             fontSize: `${editingText.fontSize || defaultFontSize}px`,
-                            fontFamily: "'Noto Sans KR'",
+                            fontFamily: "'Pretendard'",
                             lineHeight: "0.82",
                             whiteSpace: "pre",
                             padding: "0",
