@@ -2,14 +2,27 @@ import React from "react";
 import "./Header.css";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "@iconify/react";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface HeaderProps {
     variant: "main" | "history" | "workspace" | "login";
     title?: string;
+    onLoginClick?: () => void;
+    onRegisterClick?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ variant, title }) => {
+const Header: React.FC<HeaderProps> = ({ variant, title, onLoginClick, onRegisterClick }) => {
     const navigate = useNavigate();
+    const { user, isAuthenticated, logout } = useAuth();
+
+    const handleLogout = () => {
+        logout();
+        navigate('/');
+    };
+
+    const handleOAuthLogin = (provider: 'google' | 'github') => {
+        window.location.href = `/api/auth/${provider}`;
+    };
 
     return (
         <header className={`header header-${variant}`}>
@@ -50,6 +63,42 @@ const Header: React.FC<HeaderProps> = ({ variant, title }) => {
                         <img src="/assets/headerIcon/download.svg" alt="Download" />
                     </button>
                 </div>
+            )}
+
+            {/* 인증 관련 버튼들 */}
+            {variant === "workspace" && (
+            <div className="auth-buttons">
+                {isAuthenticated ? (
+                    <div className="user-profile">
+                        <img 
+                            src={user?.profileImage || "/assets/default-avatar.png"} 
+                            alt="Profile" 
+                            className="profile-image"
+                        />
+                        <div className="profile-dropdown">
+                            <span className="user-name">{user?.name}</span>
+                            <button onClick={handleLogout} className="logout-btn">
+                                로그아웃
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="login-buttons">
+                        <button 
+                            onClick={onLoginClick} 
+                            className="login-btn"
+                        >
+                            로그인
+                        </button>
+                        <button 
+                            onClick={onRegisterClick} 
+                            className="register-btn"
+                        >
+                            회원가입
+                        </button>
+                    </div>
+                )}
+            </div>
             )}
         </header>
     );

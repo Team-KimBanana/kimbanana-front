@@ -1,0 +1,326 @@
+/* Workspace 전체 배경 */
+.workspace {
+    min-height: 100vh;
+    background-color: white;
+    display: flex;
+    flex-direction: column;
+
+}
+
+.workspace::before {
+    content: "";
+    position: absolute;
+    top: 100px;
+    right: 700px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, #FFD90033 0%, transparent 70%);
+    border-radius: 50%;
+    z-index: 0;
+  }
+
+  
+
+/* 헤더 아래 hero 영역 */
+.workspace-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    padding: 48px 0 32px 0;
+    max-width: 980px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.hero-left {
+    padding-top: 100px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+.hero-title {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #30270C;
+    line-height: 1.4;
+    margin: 0;
+    letter-spacing: -1px;
+}
+.hero-right {
+    padding-top: 110px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    min-width: 260px;
+}
+.create-presentation-btn {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 28px;
+    background-color: #D2A742;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(210, 167, 66, 0.18);
+    white-space: nowrap;
+}
+.create-presentation-btn:hover {
+    background-color: #FFC000;
+    box-shadow: 0 4px 16px rgba(210, 167, 66, 0.25);
+}
+
+/* 메인 영역 */
+.workspace-main {
+    padding-top: 30px;
+    background: transparent;
+    max-width: 1090px;
+    margin: 0 auto;
+    width: 100%;
+    z-index: 2;
+}
+.workspace-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding: 0 4px;
+}
+.workspace-main-title {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #30270C;
+    margin: 0;
+}
+.workspace-search {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    padding: 0 12px;
+    height: 38px;
+    min-width: 200px;
+    border: 1px solid #e0e0e0;
+}
+.workspace-search input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 16px;
+    margin-left: 8px;
+    width: 140px;
+    color: #30270C;
+}
+
+
+/* 프레젠테이션 카드 5개 한 줄 */
+.presentations-row {
+    padding: 18px 20px; 
+    border-radius: 10px;
+    background-color: white;
+    height: 220px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 24px;
+    margin-bottom: 48px;
+}
+.presentation-card {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    border: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.presentation-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.13);
+}
+.card-thumbnail {
+    width: 100%;
+    height: 160px;
+    overflow: hidden;
+    background-color: #f0f0f0;
+    position: relative;
+}
+.card-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s;
+}
+.presentation-card:hover .card-thumbnail img {
+    transform: scale(1.05);
+}
+.card-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.13) 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 10px;
+}
+.presentation-card:hover .card-overlay {
+    opacity: 1;
+}
+.card-actions {
+    display: flex;
+    gap: 8px;
+}
+.action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(255,255,255,0.97);
+    color: #30270C;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    backdrop-filter: blur(4px);
+}
+.action-btn:hover {
+    background-color: #FFD900;
+    transform: scale(1.1);
+}
+.share-btn:hover {
+    background-color: #FFE44B;
+}
+.more-btn:hover {
+    background-color: #FFC000;
+}
+.card-content {
+    padding: 14px 14px 12px 14px;
+}
+.card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #30270C;
+    margin: 0 0 6px 0;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.card-date {
+    font-size: 13px;
+    color: #666;
+    margin: 0;
+}
+
+/* 하단 연한 회색 배경 */
+.workspace-footer-bg {
+    width: 100vw;
+    min-height: 370px;
+    background: #efefefd6;
+    margin-top: auto;
+    z-index: 1;
+}
+
+/* 로딩 상태 */
+.workspace-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 16px;
+    background-color: #F8F6C1;
+}
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #D2A742;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 반응형 */
+@media (max-width: 1200px) {
+    .workspace-hero, .workspace-main {
+        max-width: 1000px;
+    }
+    .presentations-row {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+@media (max-width: 900px) {
+    .workspace-hero, .workspace-main {
+        max-width: 98vw;
+    }
+    .presentations-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 700px) {
+    .workspace-hero {
+        flex-direction: column;
+        gap: 32px;
+        padding: 32px 0 24px 0;
+    }
+    .hero-title {
+        font-size: 1.2rem;
+        text-align: center;
+    }
+    .hero-right {
+        justify-content: center;
+        min-width: 0;
+    }
+    .workspace-main-title {
+        font-size: 1.1rem;
+    }
+    .workspace-topbar {
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+    .workspace-search {
+        width: 100%;
+        min-width: 0;
+    }
+    .presentations-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+    .card-thumbnail {
+        height: 120px;
+    }
+    .card-content {
+        padding: 10px 10px 8px 10px;
+    }
+    .card-title {
+        font-size: 13px;
+    }
+    .card-date {
+        font-size: 12px;
+    }
+}
+@media (max-width: 480px) {
+    .workspace-hero, .workspace-main {
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+    .workspace-footer-bg {
+        min-height: 120px;
+    }
+}
