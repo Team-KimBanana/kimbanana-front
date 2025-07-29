@@ -96,3 +96,88 @@
     font-weight: bold;
     color: black;
 }
+
+
+/* 인증 관련 스타일 */
+.auth-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.login-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.login-btn,
+.register-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.login-btn {
+    background-color: transparent;
+    color: #30270C;
+}
+
+.login-btn:hover {
+    background-color: #30270C;
+    color: white;
+}
+
+.register-btn {
+    background-color: #FFE44B;
+    color: #30270C;
+}
+
+.register-btn:hover {
+    background-color: #D2A742;
+}
+
+.user-profile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.profile-image {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.profile-dropdown {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #30270C;
+}
+
+.logout-btn {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.logout-btn:hover {
+    color: #30270C;
+}
+
