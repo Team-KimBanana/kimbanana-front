@@ -9,6 +9,7 @@ import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
 import {Shape, TextItem, ReceivedSlide} from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
+import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
 
 const presentationId = "p1";
@@ -24,12 +25,39 @@ const MainLayout: React.FC = () => {
     const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
     const [isTyping, setIsTyping] = useState<boolean>(false);
     const [defaultFontSize, setDefaultFontSize] = useState(20);
+    const [eraserSize, setEraserSize] = useState(15);
+    const [eraserMode, setEraserMode] = useState<"size" | "area">("size");
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
     const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
-    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastBroadcastData = useRef<string>("");
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { isFullscreen, enter, exit } = useFullscreen(containerRef);
+    const [isPresentationMode, setIsPresentationMode] = useState(false);
+
+    const goToNextSlide = () => {
+        const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
+        if (currentIndex < slides.length - 1) {
+            setCurrentSlide(slides[currentIndex + 1].id);
+        }
+    };
+
+    const goToPrevSlide = () => {
+        const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
+        if (currentIndex > 0) {
+            setCurrentSlide(slides[currentIndex - 1].id);
+        }
+    };
+
+    useEffect(() => {
+        if (isFullscreen) {
+            setIsPresentationMode(true);
+        } else {
+            setIsPresentationMode(false);
+        }
+    }, [isFullscreen]);
 
     const renderSlideThumbnail = (slideId: string, data: { shapes: Shape[]; texts: TextItem[] }) => {
         const container = document.createElement("div");
@@ -520,8 +548,13 @@ const MainLayout: React.FC = () => {
 
 
     return (
-        <div className="main-layout">
-            <Header variant="main"/>
+        <div className="main-layout" ref={containerRef}>
+            <Header
+                variant="main"
+                isFullscreen={isFullscreen}
+                onEnterFullscreen={enter}
+                onExitFullscreen={exit}
+            />
             <div className="content">
                 <Sidebar variant="main"
                          slides={slides.map(s => s.id)}
@@ -550,6 +583,15 @@ const MainLayout: React.FC = () => {
                             defaultFontSize={defaultFontSize}
                             onSelectShape={setSelectedShapeId}
                             onSelectText={setSelectedTextId}
+                            isFullscreen={isFullscreen}
+                            onEnterFullscreen={enter}
+                            onExitFullscreen={exit}
+                            isPresentationMode={isPresentationMode}
+                            goToNextSlide={goToNextSlide}
+                            goToPrevSlide={goToPrevSlide}
+                            slides={slides}
+                            eraserSize={eraserSize}
+                            eraserMode={eraserMode}
                         />
                     )}
                     <Toolbar
@@ -559,6 +601,10 @@ const MainLayout: React.FC = () => {
                         defaultFontSize={defaultFontSize}
                         setDefaultFontSize={setDefaultFontSize}
                         onImageUpload={handleImageUpload}
+                        eraserSize={eraserSize}
+                        setEraserSize={setEraserSize}
+                        eraserMode={eraserMode}
+                        setEraserMode={setEraserMode}
                     />
                 </div>
             </div>

@@ -9,9 +9,20 @@ interface HeaderProps {
     title?: string;
     onLoginClick?: () => void;
     onRegisterClick?: () => void;
+    isFullscreen?: boolean;
+    onEnterFullscreen?: () => void;
+    onExitFullscreen?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ variant, title, onLoginClick, onRegisterClick }) => {
+const Header: React.FC<HeaderProps> = ({
+                                           variant,
+                                           title,
+                                           onLoginClick,
+                                           onRegisterClick,
+                                           isFullscreen = false,
+                                           onEnterFullscreen,
+                                           onExitFullscreen
+                                       }) => {
     const navigate = useNavigate();
     const { user, isAuthenticated, logout } = useAuth();
 
@@ -50,6 +61,17 @@ const Header: React.FC<HeaderProps> = ({ variant, title, onLoginClick, onRegiste
 
             {variant === "main" && (
                 <div className="header-buttons btn">
+                    <button
+                        className="header-btn fullscreen-btn"
+                        onClick={isFullscreen ? onExitFullscreen : onEnterFullscreen}
+                        title={isFullscreen ? "전체화면 종료" : "전체화면"}
+                    >
+                        <Icon
+                            icon={isFullscreen ? "material-symbols:fullscreen-exit" : "material-symbols:fullscreen"}
+                            width="20"
+                            height="20"
+                        />
+                    </button>
                     <button className="header-btn history-btn" onClick={() => navigate("/history")}>
                         <img src="/assets/headerIcon/history.svg" alt="History" />
                     </button>
@@ -67,38 +89,38 @@ const Header: React.FC<HeaderProps> = ({ variant, title, onLoginClick, onRegiste
 
             {/* 인증 관련 버튼들 */}
             {variant === "workspace" && (
-            <div className="auth-buttons">
-                {isAuthenticated ? (
-                    <div className="user-profile">
-                        <img 
-                            src={user?.profileImage || "/assets/default-avatar.png"} 
-                            alt="Profile" 
-                            className="profile-image"
-                        />
-                        <div className="profile-dropdown">
-                            <span className="user-name">{user?.name}</span>
-                            <button onClick={handleLogout} className="logout-btn">
-                                로그아웃
+                <div className="auth-buttons">
+                    {isAuthenticated ? (
+                        <div className="user-profile">
+                            <img
+                                src={user?.profileImage || "/assets/default-avatar.png"}
+                                alt="Profile"
+                                className="profile-image"
+                            />
+                            <div className="profile-dropdown">
+                                <span className="user-name">{user?.name}</span>
+                                <button onClick={handleLogout} className="logout-btn">
+                                    로그아웃
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="login-buttons">
+                            <button
+                                onClick={onLoginClick}
+                                className="login-btn"
+                            >
+                                로그인
+                            </button>
+                            <button
+                                onClick={onRegisterClick}
+                                className="register-btn"
+                            >
+                                회원가입
                             </button>
                         </div>
-                    </div>
-                ) : (
-                    <div className="login-buttons">
-                        <button 
-                            onClick={onLoginClick} 
-                            className="login-btn"
-                        >
-                            로그인
-                        </button>
-                        <button 
-                            onClick={onRegisterClick} 
-                            className="register-btn"
-                        >
-                            회원가입
-                        </button>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
             )}
         </header>
     );

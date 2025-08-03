@@ -2,7 +2,7 @@
 
 export interface Shape {
     id: number;
-    type: "rectangle" | "circle" | "triangle" | "image";
+    type: "rectangle" | "circle" | "triangle" | "image" | "star" | "arrow";
     x?: number;
     y?: number;
     width?: number;

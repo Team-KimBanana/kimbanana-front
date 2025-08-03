@@ -9,6 +9,10 @@ interface ToolbarProps {
     defaultFontSize: number;
     setDefaultFontSize: (size: number) => void;
     onImageUpload: (imageDataUrl: string) => void;
+    eraserSize?: number;
+    setEraserSize?: (size: number) => void;
+    eraserMode?: "size" | "area";
+    setEraserMode?: (mode: "size" | "area") => void;
 }
 
 const resizeImage = (file: File, maxWidth = 1000): Promise<File> => {
@@ -51,6 +55,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              defaultFontSize,
                                              setDefaultFontSize,
                                              onImageUpload,
+                                             eraserSize = 15,
+                                             setEraserSize,
+                                             eraserMode = "size",
+                                             setEraserMode,
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
@@ -87,6 +95,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
         { name: "shapes", icon: "/assets/toolIcon/shapes.svg", isShapeButton: true },
         { name: "color", icon: "/assets/toolIcon/color.svg", isColorButton: true },
         { name: "pen", icon: "/assets/toolIcon/pen.svg" },
+        { name: "eraser", icon: "/assets/toolIcon/eraser.svg" }, // eraser.svg 없으면 임시 텍스트
         { name: "image", icon: "/assets/toolIcon/image.svg" },
     ];
 
@@ -224,6 +233,67 @@ const Toolbar: React.FC<ToolbarProps> = ({
                             </label>
                         </React.Fragment>
                     );
+
+                } else if (tool.name === "pen") {
+                    return (
+                        <button
+                            key={tool.name}
+                            className={`toolbar-btn ${activeTool === tool.name ? "active" : ""}`}
+                            onClick={() => setActiveTool("pen")}
+                        >
+                            <img src={tool.icon} alt={tool.name} />
+                        </button>
+                    );
+                } else if (tool.name === "eraser") {
+                    if (activeTool === "pen" || activeTool === "eraser") {
+                        return (
+                            <div key={tool.name} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <button
+                                    className={`toolbar-btn ${activeTool === tool.name ? "active" : ""}`}
+                                    onClick={() => setActiveTool(activeTool === "eraser" ? "pen" : "eraser")}
+                                    title="지우개"
+                                >
+                                    <Icon icon="mdi:eraser" width="20" height="20" />
+                                </button>
+                                {activeTool === "eraser" && setEraserMode && (
+                                    <select
+                                        value={eraserMode}
+                                        onChange={(e) => setEraserMode(e.target.value as "size" | "area")}
+                                        style={{
+                                            fontSize: "12px",
+                                            padding: "2px 4px",
+                                            border: "1px solid #ccc",
+                                            borderRadius: "3px",
+                                        }}
+                                        title="지우개 모드"
+                                    >
+                                        <option value="size">획 지우개</option>
+                                        <option value="area">영역 지우개</option>
+                                    </select>
+                                )}
+                                {activeTool === "eraser" && setEraserSize && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                                        <input
+                                            type="range"
+                                            min="5"
+                                            max="50"
+                                            value={eraserSize}
+                                            onChange={(e) => setEraserSize(parseInt(e.target.value))}
+                                            style={{
+                                                width: "50px",
+                                                height: "20px",
+                                            }}
+                                            title="지우개 크기"
+                                        />
+                                        <span style={{ fontSize: "12px", color: "#666" }}>
+                                            {eraserSize}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+                    return null;
                 } else {
                     return (
                         <button
