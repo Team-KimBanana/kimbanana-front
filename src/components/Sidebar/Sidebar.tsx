@@ -1,4 +1,3 @@
-import React, { useState, useEffect } from "react";
 import {
     DragDropContext,
     Droppable,
@@ -12,49 +11,43 @@ interface SidebarProps {
     currentSlide: string;
     setCurrentSlide: React.Dispatch<React.SetStateAction<string>>;
     thumbnails: { [key: string]: string };
-    variant: "main" | "history";
+    variant: "main" | "history" | "current" | "restore";
     onAddSlide?: () => void;
     onReorderSlides?: (newSlides: string[]) => void;
+    selectedSlides?: string[];
+    setSelectedSlides?: React.Dispatch<React.SetStateAction<string[]>>;
+    onRestoreSelected?: () => void;
+    isRestoreEnabled?: boolean;
+    setSelectedCurrentSlide?: (id: string) => void;
+    setSelectedRestoreSlide?: (id: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
                                              slides,
-                                             currentSlide,
                                              setCurrentSlide,
                                              thumbnails,
                                              variant,
                                              onAddSlide,
                                              onReorderSlides,
+                                             selectedSlides = [],
+                                             setSelectedSlides,
+                                             onRestoreSelected,
+                                             isRestoreEnabled,
+                                             setSelectedCurrentSlide,
+                                             setSelectedRestoreSlide,
                                          }) => {
-    const [selectAll, setSelectAll] = useState(false);
-    const [selectedSlides, setSelectedSlides] = useState<string[]>([]);
-
-    const toggleSelectAll = () => {
-        if (selectAll) {
-            setSelectedSlides([]);
+    const toggleSlideSelect = (slideId: string) => {
+        if (variant === "restore") {
+            if (setSelectedSlides) setSelectedSlides([slideId]);
+            if (setSelectedRestoreSlide) setSelectedRestoreSlide(slideId);
+        } else if (variant === "current") {
+            setCurrentSlide(slideId);
+            if (setSelectedSlides) setSelectedSlides([slideId]);
+            if (setSelectedCurrentSlide) setSelectedCurrentSlide(slideId);
         } else {
-            setSelectedSlides([...slides]);
-        }
-        setSelectAll(!selectAll);
-    };
-
-    const toggleSlideSelect = (slideNum: string) => {
-        if (variant === "history") {
-            if (selectedSlides.includes(slideNum)) {
-                setSelectedSlides((prev) => prev.filter((s) => s !== slideNum));
-            } else {
-                setSelectedSlides((prev) => [...prev, slideNum]);
-            }
-        } else {
-            setCurrentSlide(slideNum);
+            setCurrentSlide(slideId);
         }
     };
-
-    useEffect(() => {
-        if (selectAll) {
-            setSelectedSlides([...slides]);
-        }
-    }, [slides, selectAll]);
 
     const handleDragEnd = (result: DropResult) => {
         if (!result.destination || !onReorderSlides) return;
@@ -68,73 +61,88 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     return (
         <div className={`sidebar sidebar-${variant}`}>
-            {variant === "history" && (
-                <div className="sidebar-header">
-                    <p className="sidebar-title">복원 슬라이드 선택</p>
-                    <button
-                        className={`select-all-btn ${selectAll ? "active" : ""}`}
-                        onClick={toggleSelectAll}
-                    >
-                        {selectAll ? "선택 해제" : "모든 슬라이드 선택"}
-                    </button>
-                </div>
+            {(variant === "current" || variant === "restore") && (
+                <p className="sidebar-title">
+                    {variant === "current" ? "현재 슬라이드" : "복원 슬라이드 선택"}
+                </p>
             )}
 
             <DragDropContext onDragEnd={handleDragEnd}>
-                <Droppable droppableId="slides-list" isDropDisabled={variant === "history"}>
+                <Droppable
+                    droppableId="slides-list"
+                    isDropDisabled={variant !== "main"}
+                >
                     {(provided) => (
-                        <ul className="slides-list" ref={provided.innerRef} {...provided.droppableProps}>
-                            {slides.map((slideNum, index) => {
-                                const isSelected =
-                                    variant === "main"
-                                        ? slideNum === currentSlide
-                                        : selectedSlides.includes(slideNum);
+                        <div className="slides-scrollable">
+                            <ul
+                                className="slides-list"
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                            >
+                                {slides.map((slideId, index) => {
+                                    const isSelected = selectedSlides.includes(slideId);
 
-                                return (
-                                    <Draggable
-                                        key={`slide-${slideNum}-${index}`}
-                                        draggableId={`slide-${slideNum}-${index}`}
-                                        index={index}
-                                        isDragDisabled={variant === "history"}
-                                    >
-                                        {(dragProvided, snapshot) => (
-                                            <li
-                                                ref={dragProvided.innerRef}
-                                                {...dragProvided.draggableProps}
-                                                {...dragProvided.dragHandleProps}
-                                                className={`slide-item ${
-                                                    isSelected ? "selected" : ""
-                                                } ${snapshot.isDragging ? "dragging" : ""}`}
-                                                onClick={() => toggleSlideSelect(slideNum)}
-                                            >
-                                                <span className="slide-number">{index + 1}</span>
-                                                <div className="slide-thumbnail">
-                                                    {thumbnails[slideNum] && (
-                                                        <img
-                                                            src={thumbnails[slideNum]}
-                                                            alt={`Slide ${index + 1}`}
-                                                            className="slide-preview"
-                                                        />
-                                                    )}
-                                                </div>
-                                            </li>
-                                        )}
-                                    </Draggable>
-                                );
-                            })}
-                            {provided.placeholder}
+                                    return (
+                                        <Draggable
+                                            key={`slide-${slideId}-${index}`}
+                                            draggableId={`slide-${slideId}-${index}`}
+                                            index={index}
+                                            isDragDisabled={variant !== "main"}
+                                        >
+                                            {(dragProvided, snapshot) => (
+                                                <li
+                                                    ref={dragProvided.innerRef}
+                                                    {...dragProvided.draggableProps}
+                                                    {...dragProvided.dragHandleProps}
+                                                    className={`slide-item ${isSelected ? "selected" : ""} ${
+                                                        snapshot.isDragging ? "dragging" : ""
+                                                    }`}
+                                                    onClick={() => toggleSlideSelect(slideId)}
+                                                >
+                                                    <span className="slide-number">{index + 1}</span>
+                                                    <div className="slide-thumbnail">
+                                                        {thumbnails[slideId] && (
+                                                            <img
+                                                                src={thumbnails[slideId]}
+                                                                alt={`Slide ${index + 1}`}
+                                                                className="slide-preview"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </li>
+                                            )}
+                                        </Draggable>
+                                    );
+                                })}
 
-                            {slides.length === 0 && (
-                                <li className="slide-placeholder">슬라이드를 추가해보세요</li>
-                            )}
-                        </ul>
+                                {provided.placeholder}
+
+                                {variant === "main" && onAddSlide && (
+                                    <li className="slide-item" onClick={onAddSlide}>
+                                        <div className="slide-thumbnail add-slide">+</div>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
                     )}
                 </Droppable>
             </DragDropContext>
 
-            {variant === "main" && onAddSlide && (
-                <div onClick={onAddSlide}>
-                    <div className="slide-thumbnail add-slide">+</div>
+            {variant === "restore" && (
+                <div className="sidebar-footer">
+                    <div
+                        className="restore-text"
+                        onClick={isRestoreEnabled ? onRestoreSelected : undefined}
+                        style={{
+                            color: isRestoreEnabled ? "#FFB93E" : "#aaa",
+                            cursor: isRestoreEnabled ? "pointer" : "default",
+                        }}
+                    >
+                        선택한 슬라이드 복원
+                    </div>
+                    <div className="restore-text" style={{ color: "#aaa" }}>
+                        전체 슬라이드 복원
+                    </div>
                 </div>
             )}
         </div>

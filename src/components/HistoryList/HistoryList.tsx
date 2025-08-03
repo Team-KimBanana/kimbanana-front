@@ -5,8 +5,10 @@ import { Shape, TextItem } from "../../types/types.ts";
 interface HistoryListProps {
     historyData: {
         [timestamp: string]: {
-            shapes: Shape[];
-            texts: TextItem[];
+            [slideId: string]: {
+                shapes: Shape[];
+                texts: TextItem[];
+            };
         };
     };
     selected: string | null;
@@ -15,7 +17,6 @@ interface HistoryListProps {
 
 const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSelect }) => {
     const grouped: { [date: string]: string[] } = {};
-
     Object.keys(historyData).forEach((timestamp) => {
         const parts = timestamp.split(" ");
         const date = parts.slice(0, 3).join(" ");
@@ -46,7 +47,6 @@ const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSele
                         <div className="history-timestamps">
                             {timestamps.map((timestamp) => {
                                 const isActive = selected === timestamp;
-
                                 return (
                                     <div
                                         key={timestamp}
@@ -54,9 +54,6 @@ const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSele
                                         onClick={() => onSelect(timestamp)}
                                     >
                                         <span>{timestamp}</span>
-                                        {isActive && (
-                                            <div className="history-restore-button">복원하기</div>
-                                        )}
                                     </div>
                                 );
                             })}

@@ -1,8 +1,8 @@
 import React from "react";
 import "./Header.css";
-import { useNavigate } from "react-router-dom";
-import { Icon } from "@iconify/react";
-import { useAuth } from "../../contexts/AuthContext";
+import {useNavigate} from "react-router-dom";
+import {Icon} from "@iconify/react";
+import {useAuth} from "../../contexts/AuthContext";
 
 interface HeaderProps {
     variant: "main" | "history" | "workspace" | "login";
@@ -12,6 +12,7 @@ interface HeaderProps {
     isFullscreen?: boolean;
     onEnterFullscreen?: () => void;
     onExitFullscreen?: () => void;
+    onApplyRestore?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -21,10 +22,11 @@ const Header: React.FC<HeaderProps> = ({
                                            onRegisterClick,
                                            isFullscreen = false,
                                            onEnterFullscreen,
-                                           onExitFullscreen
+                                           onExitFullscreen,
+                                           onApplyRestore,
                                        }) => {
     const navigate = useNavigate();
-    const { user, isAuthenticated, logout } = useAuth();
+    const {user, isAuthenticated, logout} = useAuth();
 
     const handleLogout = () => {
         logout();
@@ -39,15 +41,31 @@ const Header: React.FC<HeaderProps> = ({
         <header className={`header header-${variant}`}>
             {variant === "main" || variant === "workspace" ? (
                 <div className="logo-container">
-                    <img src="/assets/headerIcon/KimbananaLogo.svg" alt="KimBanana Logo" className="logo" />
+                    <img src="/assets/headerIcon/KimbananaLogo.svg" alt="KimBanana Logo" className="logo"/>
                 </div>
             ) : null}
 
             {variant === "history" && (
-                <div className="history-header-left" onClick={() => navigate(-1)}>
-                    <Icon icon="material-symbols:arrow-back-rounded" width="24" className="back-arrow" />
-                    <h2 className="header-title">{title || "히스토리"}</h2>
-                </div>
+                <>
+                    <div className="history-header-left" onClick={() => navigate(-1)}>
+                        <Icon icon="material-symbols:arrow-back-rounded" width="24" className="back-arrow"/>
+                    </div>
+                    <div className="header-buttons history-btns">
+                        {variant === "history" && onApplyRestore && (
+                            <button
+                                className="header-btn restore-apply-btn"
+                                onClick={() => {
+                                    if (window.confirm("복원된 내용을 적용하시겠습니까?")) {
+                                        alert("복원이 완료되었습니다.");
+                                        navigate("/editor/${id}");
+                                    }
+                                }}
+                            >
+                                <img src="/assets/headerIcon/restoreApply.svg" alt="restoreApply"/>
+                            </button>
+                        )}
+                    </div>
+                </>
             )}
 
             {variant === "main" && (
@@ -73,16 +91,16 @@ const Header: React.FC<HeaderProps> = ({
                         />
                     </button>
                     <button className="header-btn history-btn" onClick={() => navigate("/history")}>
-                        <img src="/assets/headerIcon/history.svg" alt="History" />
+                        <img src="/assets/headerIcon/history.svg" alt="History"/>
                     </button>
                     <button className="header-btn save-btn">
-                        <img src="/assets/headerIcon/save.svg" alt="Save" />
+                        <img src="/assets/headerIcon/save.svg" alt="Save"/>
                     </button>
                     <button className="header-btn share-btn">
-                        <img src="/assets/headerIcon/share.svg" alt="Share" />
+                        <img src="/assets/headerIcon/share.svg" alt="Share"/>
                     </button>
                     <button className="header-btn download-btn">
-                        <img src="/assets/headerIcon/download.svg" alt="Download" />
+                        <img src="/assets/headerIcon/download.svg" alt="Download"/>
                     </button>
                 </div>
             )}
