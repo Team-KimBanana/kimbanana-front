@@ -7,7 +7,7 @@ import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
-import {Shape, TextItem, ReceivedSlide} from "../types/types.ts";
+import {Shape, TextItem, ReceivedSlide, PresentationDetailResponse, SlideResponse} from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
@@ -108,12 +108,13 @@ const MainLayout: React.FC = () => {
                 return;
             }
 
-            const json = await res.json();
+            const json: PresentationDetailResponse = await res.json();
             console.log("슬라이드 API 응답:", json);
 
-            const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
+            const slideList: SlideResponse[] = json.slides || [];
 
             if (slideList.length === 0) {
+                // 슬라이드가 없는 경우 기본 슬라이드 생성
                 const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
                     method: "POST",
                 });
@@ -143,10 +144,8 @@ const MainLayout: React.FC = () => {
                 let parsedData: { shapes?: Shape[]; texts?: TextItem[] } = { shapes: [], texts: [] };
 
                 try {
-                    parsedData =
-                        typeof slide.data === "string"
-                            ? JSON.parse(slide.data)
-                            : slide.data || {};
+                    // API 응답에서 data는 이미 객체로 제공됨
+                    parsedData = slide.data || { shapes: [], texts: [] };
                 } catch (err) {
                     console.warn(`슬라이드 데이터 파싱 실패 (slide_id: ${id})`, err);
                 }
@@ -171,6 +170,18 @@ const MainLayout: React.FC = () => {
 
         } catch (err) {
             console.error("슬라이드 fetch 중 오류 발생:", err);
+            // 에러 시 목 데이터 사용 (개발용)
+            const mockSlides = [{ id: "s_001", order: 1 }];
+            const mockData = {
+                "s_001": {
+                    shapes: [],
+                    texts: [],
+                },
+            };
+
+            setSlides(mockSlides);
+            setSlideData(mockData);
+            setCurrentSlide("s_001");
         }
 
     };
