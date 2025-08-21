@@ -54,7 +54,7 @@ export type SlideMap = {
     [slideId: string]: SlideData;
 };
 
-// 새로운 타입들
+
 export interface User {
     id: string;
     email: string;
@@ -100,3 +100,36 @@ export interface RegisterCredentials {
     name: string;
 }
 
+// API 응답 타입들
+export interface PresentationResponse {
+    presentation: {
+        presentation_id: string;
+        presentation_title: string;
+        last_revision_date: string;
+        user_id: string;
+    };
+    thumbnail_url?: string;
+}
+
+export interface SlideResponse {
+    slide_id: string;
+    last_revision_date: string;
+    last_revision_user_id: string;
+    order: number;
+    data: {
+        shapes?: Shape[];
+        texts?: TextItem[];
+    };
+}
+
+export interface PresentationDetailResponse {
+    presentation: {
+        presentation_id: string;
+        presentation_title: string;
+    };
+    slides: SlideResponse[];
+}
+
+export interface CreatePresentationRequest {
+    user_id: string;
+}

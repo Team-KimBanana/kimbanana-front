@@ -120,14 +120,14 @@
 
 /* 프레젠테이션 카드 5개 한 줄 */
 .presentations-row {
-    padding: 18px 20px; 
+    padding: 18px 20px;
     border-radius: 10px;
     background-color: white;
     height: 220px;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 24px;
-    margin-bottom: 48px;
+    margin-bottom: 25px;
 }
 .presentation-card {
     background: white;
@@ -226,7 +226,7 @@
 /* 하단 연한 회색 배경 */
 .workspace-footer-bg {
     width: 100vw;
-    min-height: 370px;
+    min-height: 450px;
     background: #efefefd6;
     margin-top: auto;
     z-index: 1;
@@ -253,6 +253,98 @@
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* 에러 처리 */
+.workspace-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    padding: 20px;
+    background-color: #F8F6C1;
+}
+
+.workspace-error p {
+    color: #e74c3c;
+    font-size: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.workspace-error button {
+    padding: 10px 20px;
+    background-color: #D2A742;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.workspace-error button:hover {
+    background-color: #FFC000;
+}
+
+/* 슬라이드 네비게이션 */
+.slide-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.nav-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    color: #30270C;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background-color: #D2A742;
+    color: white;
+    transform: scale(1.05);
+}
+
+.nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.slide-indicators {
+    display: flex;
+    gap: 8px;
+}
+
+.indicator {
+    width: 10px;
+    height: 10px;
+    border: none;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.indicator:hover {
+    background-color: #D2A742;
+}
+
+.indicator.active {
+    background-color: #D2A742;
+    transform: scale(1.2);
 }
 
 /* 반응형 */
@@ -301,6 +393,14 @@
     .presentations-row {
         grid-template-columns: 1fr;
         gap: 14px;
+    }
+    .nav-btn {
+        width: 36px;
+        height: 36px;
+    }
+    .slide-navigation {
+        gap: 12px;
+        margin-bottom: 16px;
     }
     .card-thumbnail {
         height: 120px;
