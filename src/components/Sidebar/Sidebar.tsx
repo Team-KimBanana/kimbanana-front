@@ -24,6 +24,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({
                                              slides,
+                                             currentSlide,
                                              setCurrentSlide,
                                              thumbnails,
                                              variant,
@@ -80,12 +81,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 {...provided.droppableProps}
                             >
                                 {slides.map((slideId, index) => {
-                                    const isSelected = selectedSlides.includes(slideId);
+                                    const isSelected =
+                                        variant === "main"
+                                            ? slideId === currentSlide
+                                            : selectedSlides.includes(slideId);
 
                                     return (
                                         <Draggable
-                                            key={`slide-${slideId}-${index}`}
-                                            draggableId={`slide-${slideId}-${index}`}
+                                            key={`slide-${slideId}`}
+                                            draggableId={`slide-${slideId}`}
                                             index={index}
                                             isDragDisabled={variant !== "main"}
                                         >

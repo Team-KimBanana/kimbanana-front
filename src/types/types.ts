@@ -2,7 +2,7 @@
 
 export interface Shape {
     id: number;
-    type: "rectangle" | "circle" | "triangle" | "image" | "star" | "arrow";
+    type: "rectangle" | "circle" | "triangle" | "image" | "star" | "arrow" | "line";
     x?: number;
     y?: number;
     width?: number;
@@ -14,7 +14,7 @@ export interface Shape {
     rotation?: number;
     color?: string;
     imageSrc?: string;
-
+    strokeWidth?: number;
 }
 
 export interface TextItem {

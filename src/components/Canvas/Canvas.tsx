@@ -93,15 +93,15 @@ const Canvas: React.FC<CanvasProps> = ({
     const layerRef = useRef<Konva.Layer>(null);
 
     useEffect(() => {
+        if (!stageRef.current) return;
+
         if (thumbnailTimeout.current) clearTimeout(thumbnailTimeout.current);
 
         thumbnailTimeout.current = setTimeout(() => {
-            if (stageRef.current) {
-                const dataUrl = stageRef.current.toDataURL({pixelRatio: 0.25});
-                updateThumbnail(currentSlide, dataUrl);
-            }
+            const dataUrl = stageRef.current!.toDataURL({ pixelRatio: 0.25 });
+            updateThumbnail(currentSlide, dataUrl);
         }, 300);
-    }, [shapes, texts, currentSlide]);
+    }, [shapes, texts, currentSlide, updateThumbnail]);
 
 
     useEffect(() => {
@@ -368,10 +368,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
             let displayWidth, displayHeight;
             if (screenAspectRatio > aspectRatio) {
-                displayHeight = screenHeight * 0.8;
+                displayHeight = screenHeight;
                 displayWidth = displayHeight * aspectRatio;
             } else {
-                displayWidth = screenWidth * 0.8;
+                displayWidth = screenWidth ;
                 displayHeight = displayWidth / aspectRatio;
             }
 
@@ -407,7 +407,7 @@ const Canvas: React.FC<CanvasProps> = ({
         isEraser: activeTool === "eraser",
         eraserSize,
         eraserMode,
-    });
+    }, setShapes);
 
 
     const originalHeight = 563;
@@ -589,8 +589,18 @@ const Canvas: React.FC<CanvasProps> = ({
                                         if (node) shapeRefs.current.set(shape.id, node);
                                     }}
                                 />
-
                             )}
+                            {shape.type === "line" && (
+                                <Line
+                                    key={shape.id}
+                                    points={shape.points || []}
+                                    stroke={shape.color || "black"}
+                                    strokeWidth={shape.strokeWidth || 3}
+                                    lineCap="round"
+                                    lineJoin="round"
+                                />
+                            )}
+
                         </React.Fragment>
                     ))}
 

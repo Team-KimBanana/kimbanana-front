@@ -7,6 +7,8 @@ import {useAuth} from "../../contexts/AuthContext";
 interface HeaderProps {
     variant: "main" | "history" | "workspace" | "login";
     title?: string;
+    onTitleChange?: (v: string) => void;
+    onTitleSave?: (v: string) => void;
     onLoginClick?: () => void;
     onRegisterClick?: () => void;
     isFullscreen?: boolean;
@@ -18,6 +20,8 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({
                                            variant,
                                            title,
+                                           onTitleChange,
+                                           onTitleSave,
                                            onLoginClick,
                                            onRegisterClick,
                                            isFullscreen = false,
@@ -73,7 +77,15 @@ const Header: React.FC<HeaderProps> = ({
                     type="text"
                     className="title-input"
                     placeholder="제목을 입력해주세요."
-                    defaultValue={title}
+                    value={title ?? ""}
+                    onChange={(e) => onTitleChange?.(e.target.value)}
+                    onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val) onTitleSave?.(val);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
                 />
             )}
 
@@ -84,11 +96,7 @@ const Header: React.FC<HeaderProps> = ({
                         onClick={isFullscreen ? onExitFullscreen : onEnterFullscreen}
                         title={isFullscreen ? "전체화면 종료" : "전체화면"}
                     >
-                        <Icon
-                            icon={isFullscreen ? "material-symbols:fullscreen-exit" : "material-symbols:fullscreen"}
-                            width="20"
-                            height="20"
-                        />
+                        <img src="/assets/headerIcon/fullscreen.svg" alt="fullscreen"/>
                     </button>
                     <button className="header-btn history-btn" onClick={() => navigate("/history")}>
                         <img src="/assets/headerIcon/history.svg" alt="History"/>

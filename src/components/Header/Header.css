@@ -66,6 +66,11 @@
     opacity: 0.8;
 }
 
+.fullscreen-btn img {
+    height: 39px;
+    width: 100%;
+}
+
 .history-btn img,
 .save-btn img,
 .share-btn img {

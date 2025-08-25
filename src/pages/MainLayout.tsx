@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useRef} from "react";
+import { useParams } from "react-router-dom";
 import ReactDOM from "react-dom/client";
 import {Client, StompSubscription} from "@stomp/stompjs";
 
@@ -12,7 +13,6 @@ import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
 
-const presentationId = "p1";
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 const WS_URL = import.meta.env.VITE_WS_URL;
 
@@ -36,6 +36,11 @@ const MainLayout: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
+    const [presentationTitle, setPresentationTitle] = useState<string | undefined>(undefined);
+
+
+    const { id } = useParams();
+    const presentationId = id ?? "p1";
 
     const goToNextSlide = () => {
         const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
@@ -393,6 +398,12 @@ const MainLayout: React.FC = () => {
                 if (slideList.length > 0 && (!currentSlide || currentSlide === "")) {
                     setCurrentSlide(slideList[0].slide_id);
                 }
+            } else if (type === "TITLE_UPDATED" || type === "TITLE_UPDATE") {
+                const newTitle = payload?.new_title;
+                if (!payload?.presentation_id || payload.presentation_id === presentationId) {
+                    setPresentationTitle(newTitle ?? undefined);
+                    if (newTitle) document.title = `${newTitle} - Kimbanana`;
+                }
             } else {
                 console.warn("알 수 없는 구조 메시지 type:", type);
             }
@@ -557,6 +568,25 @@ const MainLayout: React.FC = () => {
         img.src = imageUrl;
     };
 
+    const savePresentationTitle = async (title: string) => {
+        try {
+            await fetch(`${API_BASE}/presentations/${presentationId}/slides/title`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    presentation_id: presentationId,
+                    new_title: title,
+                }),
+            });
+            setPresentationTitle(title);
+        } catch (err) {
+            console.error("프레젠테이션 제목 업데이트 실패:", err);
+        }
+    };
+
+
 
     return (
         <div className="main-layout" ref={containerRef}>
@@ -565,6 +595,9 @@ const MainLayout: React.FC = () => {
                 isFullscreen={isFullscreen}
                 onEnterFullscreen={enter}
                 onExitFullscreen={exit}
+                title={presentationTitle}
+                onTitleChange={setPresentationTitle}
+                onTitleSave={savePresentationTitle}
             />
             <div className="content">
                 <Sidebar variant="main"

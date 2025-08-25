@@ -1,5 +1,8 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import Konva from "konva";
+import { Shape } from "../types/types";
+import { KonvaEventObject } from "konva/lib/Node";
+import Vector2d = Konva.Vector2d;
 
 interface UseDrawingOptions {
   color?: string;
@@ -9,37 +12,49 @@ interface UseDrawingOptions {
   eraserMode?: "size" | "area";
 }
 
-export default function useDrawing(layerRef: React.RefObject<Konva.Layer>, options: UseDrawingOptions = {}) {
-  const { color = "black", width = 2, isEraser = false, eraserSize = 15, eraserMode = "size" } = options;
-  const isDrawing = useRef(false);
-  const [lines, setLines] = useState<Konva.Line[]>([]);
-  const eraserStartPos = useRef<{ x: number; y: number } | null>(null);
+export default function useDrawing(
+    layerRef: React.RefObject<Konva.Layer>,
+    options: UseDrawingOptions = {},
+    setShapes: React.Dispatch<React.SetStateAction<Shape[]>>
+) {
+  const {
+    color = "black",
+    width = 2,
+    isEraser = false,
+    eraserSize = 15,
+    eraserMode = "size",
+  } = options;
 
-  const onMouseDown = (e: any) => {
+  const isDrawing = useRef(false);
+  const eraserStartPos = useRef<{ x: number; y: number } | null>(null);
+  const currentPoints = useRef<number[]>([]);
+
+
+  const onMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     isDrawing.current = true;
-    const pos = e.target.getStage().getPointerPosition();
-    
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pos: Vector2d | null = stage.getPointerPosition();
+    if (!pos) return;
+
     if (isEraser) {
       eraserStartPos.current = pos;
     } else {
-      const newLine = new Konva.Line({
-        points: [pos.x, pos.y],
-        stroke: color,
-        strokeWidth: width,
-        globalCompositeOperation: "source-over",
-        lineCap: "round",
-        lineJoin: "round",
-        draggable: false,
-      });
-      layerRef.current?.add(newLine);
-      setLines((prev) => [...prev, newLine]);
+      currentPoints.current = [pos.x, pos.y];
     }
   };
 
-  const onMouseMove = (e: any) => {
+  const onMouseMove = (e: KonvaEventObject<MouseEvent>) => {
     if (!isDrawing.current) return;
-    const pos = e.target.getStage().getPointerPosition();
-    
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pos: Vector2d | null = stage.getPointerPosition();
+    if (!pos) return;
+
     if (isEraser) {
       if (eraserMode === "size") {
         handleSizeEraser(pos);
@@ -47,143 +62,131 @@ export default function useDrawing(layerRef: React.RefObject<Konva.Layer>, optio
         handleAreaEraser(pos);
       }
     } else {
-      const lastLine = lines[lines.length - 1];
-      if (lastLine) {
-        lastLine.points([...lastLine.points(), pos.x, pos.y]);
-        layerRef.current?.batchDraw();
-      }
+      currentPoints.current.push(pos.x, pos.y);
+      drawTempLine();
     }
+  };
+
+  const onMouseUp = () => {
+    isDrawing.current = false;
+
+    if (!isEraser && currentPoints.current.length >= 4) {
+      const newLine: Shape = {
+        id: Date.now(),
+        type: "line",
+        x: 0,
+        y: 0,
+        points: [...currentPoints.current],
+        color,
+        strokeWidth: width,
+      };
+      setShapes(prev => [...prev, newLine]);
+    }
+
+    currentPoints.current = [];
+    eraserStartPos.current = null;
+    clearTempVisuals();
+  };
+
+  const drawTempLine = () => {
+    const existing = layerRef.current?.findOne(".drawing-preview") as Konva.Line;
+    if (existing) {
+      existing.points(currentPoints.current);
+    } else {
+      const tempLine = new Konva.Line({
+        name: "drawing-preview",
+        points: currentPoints.current,
+        stroke: color,
+        strokeWidth: width,
+        lineCap: "round",
+        lineJoin: "round",
+        dash: [10, 5],
+      });
+      layerRef.current?.add(tempLine);
+    }
+
+    layerRef.current?.batchDraw();
+  };
+
+  const clearTempVisuals = () => {
+    const tempLine = layerRef.current?.findOne(".drawing-preview");
+    if (tempLine) {
+      tempLine.destroy();
+      layerRef.current?.batchDraw();
+    }
+
+    const eraserShapes = ["eraser-circle", "eraser-rect"];
+    eraserShapes.forEach((name) => {
+      const shape = layerRef.current?.findOne(`.${name}`);
+      shape?.destroy();
+    });
   };
 
   const handleSizeEraser = (pos: { x: number; y: number }) => {
     const centerX = pos.x;
     const centerY = pos.y;
     const radius = eraserSize / 2;
-    
-    const shapesToRemove: Konva.Line[] = [];
-    layerRef.current?.children.forEach((child) => {
-      if (child instanceof Konva.Line && child !== layerRef.current?.findOne('Rect')) {
-        const points = child.points();
-        let isInEraserArea = false;
-        
-        for (let i = 0; i < points.length; i += 2) {
-          const pointX = points[i];
-          const pointY = points[i + 1];
-          
-          const distance = Math.sqrt(
-            Math.pow(pointX - centerX, 2) + Math.pow(pointY - centerY, 2)
+
+    setShapes((prev) =>
+        prev.filter((shape) => {
+          if (shape.type !== "line" || !shape.points) return true;
+          return !shape.points.some((_, i) =>
+              i % 2 === 0
+                  ? Math.hypot(shape.points![i] - centerX, shape.points![i + 1] - centerY) <= radius
+                  : false
           );
-          
-          if (distance <= radius) {
-            isInEraserArea = true;
-            break;
-          }
-        }
-        
-        if (isInEraserArea) {
-          shapesToRemove.push(child);
-        }
-      }
-    });
-    
-    shapesToRemove.forEach((line) => {
-      line.destroy();
-    });
-    
-    setLines((prev) => prev.filter(line => !shapesToRemove.includes(line)));
-    
-    const eraserCircle = layerRef.current?.findOne('.eraser-circle');
-    if (eraserCircle) {
-      eraserCircle.destroy();
-    }
-    
+        })
+    );
+
     const circle = new Konva.Circle({
       x: centerX,
       y: centerY,
-      radius: radius,
-      fill: 'rgba(255, 0, 0, 0.2)',
-      stroke: 'red',
+      radius,
+      fill: "rgba(255,0,0,0.2)",
+      stroke: "red",
       strokeWidth: 2,
-      name: 'eraser-circle'
+      name: "eraser-circle",
     });
     layerRef.current?.add(circle);
-    
     layerRef.current?.batchDraw();
   };
 
   const handleAreaEraser = (pos: { x: number; y: number }) => {
-    if (eraserStartPos.current) {
-      const startPos = eraserStartPos.current;
-      const endPos = pos;
-      
-      const minX = Math.min(startPos.x, endPos.x);
-      const maxX = Math.max(startPos.x, endPos.x);
-      const minY = Math.min(startPos.y, endPos.y);
-      const maxY = Math.max(startPos.y, endPos.y);
-      
-      const shapesToRemove: Konva.Line[] = [];
-      layerRef.current?.children.forEach((child) => {
-        if (child instanceof Konva.Line && child !== layerRef.current?.findOne('Rect')) {
-          const points = child.points();
-          let isInEraserArea = false;
-          
-          for (let i = 0; i < points.length; i += 2) {
-            const pointX = points[i];
-            const pointY = points[i + 1];
-            
-            if (pointX >= minX && pointX <= maxX && pointY >= minY && pointY <= maxY) {
-              isInEraserArea = true;
-              break;
-            }
-          }
-          
-          if (isInEraserArea) {
-            shapesToRemove.push(child);
-          }
-        }
-      });
-      
-      shapesToRemove.forEach((line) => {
-        line.destroy();
-      });
-      
-      setLines((prev) => prev.filter(line => !shapesToRemove.includes(line)));
-      
-      const eraserRect = layerRef.current?.findOne('.eraser-rect');
-      if (eraserRect) {
-        eraserRect.destroy();
-      }
-      
-      const rect = new Konva.Rect({
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        fill: 'rgba(255, 0, 0, 0.3)',
-        stroke: 'red',
-        strokeWidth: 2,
-        name: 'eraser-rect'
-      });
-      layerRef.current?.add(rect);
-      
-      layerRef.current?.batchDraw();
-    }
-  };
+    if (!eraserStartPos.current) return;
 
-  const onMouseUp = () => {
-    isDrawing.current = false;
-    eraserStartPos.current = null;
-    
-    const eraserCircle = layerRef.current?.findOne('.eraser-circle');
-    const eraserRect = layerRef.current?.findOne('.eraser-rect');
-    if (eraserCircle) {
-      eraserCircle.destroy();
-    }
-    if (eraserRect) {
-      eraserRect.destroy();
-    }
+    const start = eraserStartPos.current;
+    const minX = Math.min(start.x, pos.x);
+    const maxX = Math.max(start.x, pos.x);
+    const minY = Math.min(start.y, pos.y);
+    const maxY = Math.max(start.y, pos.y);
+
+    setShapes((prev) =>
+        prev.filter((shape) => {
+          if (shape.type !== "line" || !shape.points) return true;
+          return !shape.points.some((_, i) =>
+              i % 2 === 0
+                  ? shape.points![i] >= minX &&
+                  shape.points![i] <= maxX &&
+                  shape.points![i + 1] >= minY &&
+                  shape.points![i + 1] <= maxY
+                  : false
+          );
+        })
+    );
+
+    const rect = new Konva.Rect({
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      fill: "rgba(255,0,0,0.3)",
+      stroke: "red",
+      strokeWidth: 2,
+      name: "eraser-rect",
+    });
+    layerRef.current?.add(rect);
     layerRef.current?.batchDraw();
   };
 
-  return { onMouseDown, onMouseMove, onMouseUp, lines };
+  return { onMouseDown, onMouseMove, onMouseUp };
 }
