@@ -50,6 +50,12 @@ export type SlideData = {
     texts: TextItem[];
 };
 
+export type SlideOrder = {
+    id: string;
+    order: number
+};
+
+
 export type SlideMap = {
     [slideId: string]: SlideData;
 };

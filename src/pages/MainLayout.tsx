@@ -8,7 +8,7 @@ import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 
-import {Shape, TextItem, ReceivedSlide, PresentationDetailResponse, SlideResponse} from "../types/types.ts";
+import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
@@ -105,6 +105,7 @@ const MainLayout: React.FC = () => {
         };
     }, []);
 
+
     const fetchSlides = async () => {
         try {
             const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`);
@@ -113,82 +114,83 @@ const MainLayout: React.FC = () => {
                 return;
             }
 
-            const json: PresentationDetailResponse = await res.json();
-            console.log("슬라이드 API 응답:", json);
+            const json = await res.json();
+            const serverTitle =
+                json?.presentation?.presentation_title ??
+                json?.presentation_title ??
+                json?.title ??
+                "";
+            setPresentationTitle(serverTitle);
 
-            const slideList: SlideResponse[] = json.slides || [];
+            const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
 
             if (slideList.length === 0) {
-                // 슬라이드가 없는 경우 기본 슬라이드 생성
-                const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
-                    method: "POST",
-                });
-                const json = await res.json();
-                const defaultSlideId = json.slide_id;
-                const defaultOrder = json.order;
+                const res2 = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
+                const json2 = await res2.json();
+                const defaultSlideId: string = json2.slide_id;
+                const defaultOrder: number = json2.order;
 
-                const defaultSlides = [{ id: defaultSlideId, order: defaultOrder }];
-                const defaultData = {
-                    [defaultSlideId]: {
-                        shapes: [],
-                        texts: [],
-                    },
+                const defaultSlides: SlideOrder[] = [{ id: defaultSlideId, order: defaultOrder }];
+                const defaultData: Record<string, SlideData> = {
+                    [defaultSlideId]: { shapes: [], texts: [] },
                 };
 
                 setSlides(defaultSlides);
                 setSlideData(defaultData);
                 setCurrentSlide(defaultSlideId);
+
+                renderSlideThumbnail(defaultSlideId, defaultData[defaultSlideId]);
                 return;
             }
 
-            const newSlideData: Record<string, { shapes: Shape[]; texts: TextItem[] }> = {};
-            const orders: { id: string; order: number }[] = [];
+            const orders: SlideOrder[] = slideList
+                .map((s): SlideOrder => ({ id: s.slide_id, order: s.order }))
+                .sort((a, b) => a.order - b.order);
 
-            slideList.forEach((slide) => {
-                const id = slide.slide_id;
-                let parsedData: { shapes?: Shape[]; texts?: TextItem[] } = { shapes: [], texts: [] };
+            const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s): Promise<[string, SlideData]> => {
+                let d: unknown = s.data;
 
-                try {
-                    // API 응답에서 data는 이미 객체로 제공됨
-                    parsedData = slide.data || { shapes: [], texts: [] };
-                } catch (err) {
-                    console.warn(`슬라이드 데이터 파싱 실패 (slide_id: ${id})`, err);
+                if (d === undefined) {
+                    const detail = await fetch(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
+                    if (detail.ok) {
+                        const dj = await detail.json();
+                        d = dj?.data ?? { shapes: [], texts: [] };
+                    } else {
+                        d = { shapes: [], texts: [] };
+                    }
                 }
 
-                newSlideData[id] = {
-                    shapes: parsedData.shapes || [],
-                    texts: parsedData.texts || [],
-                };
+                if (typeof d === "string") {
+                    try {
+                        d = JSON.parse(d);
+                    } catch {
+                        d = { shapes: [], texts: [] };
+                    }
+                }
 
-                orders.push({ id, order: slide.order });
+                let shapes: Shape[] = [];
+                let texts: TextItem[] = [];
+                if (d && typeof d === "object") {
+                    const obj = d as { shapes?: Shape[]; texts?: TextItem[] };
+                    shapes = Array.isArray(obj.shapes) ? obj.shapes : [];
+                    texts  = Array.isArray(obj.texts)  ? obj.texts  : [];
+                }
+
+                return [s.slide_id, { shapes, texts }];
             });
 
-            orders.sort((a, b) => a.order - b.order);
+            const dataEntries: [string, SlideData][] = await Promise.all(dataPromises);
+
+            const newSlideData: Record<string, SlideData> = Object.fromEntries(dataEntries);
+
             setSlides(orders);
             setSlideData(newSlideData);
-            setCurrentSlide(orders[0].id);
+            setCurrentSlide(orders[0]?.id ?? "");
 
-            orders.forEach(({ id }) => {
-                const data = newSlideData[id];
-                renderSlideThumbnail(id, data);
-            });
-
+            orders.forEach(({ id }) => renderSlideThumbnail(id, newSlideData[id]));
         } catch (err) {
-            console.error("슬라이드 fetch 중 오류 발생:", err);
-            // 에러 시 목 데이터 사용 (개발용)
-            const mockSlides = [{ id: "s_001", order: 1 }];
-            const mockData = {
-                "s_001": {
-                    shapes: [],
-                    texts: [],
-                },
-            };
-
-            setSlides(mockSlides);
-            setSlideData(mockData);
-            setCurrentSlide("s_001");
+            console.error("슬라이드 fetch 중 오류:", err);
         }
-
     };
 
 
