@@ -16,6 +16,15 @@ import "./MainLayout.css";
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 const WS_URL = import.meta.env.VITE_WS_URL;
 
+function dataURLtoBlob(dataURL: string) {
+    const [header, base64] = dataURL.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "image/png";
+    const bin = atob(base64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+}
+
 const MainLayout: React.FC = () => {
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
@@ -37,6 +46,8 @@ const MainLayout: React.FC = () => {
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
     const [presentationTitle, setPresentationTitle] = useState<string | undefined>(undefined);
+    const lastUploadedHashRef = useRef<string>("");
+    const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
     const { id } = useParams();
@@ -64,26 +75,50 @@ const MainLayout: React.FC = () => {
         }
     }, [isFullscreen]);
 
-    const renderSlideThumbnail = (slideId: string, data: { shapes: Shape[]; texts: TextItem[] }) => {
+    const renderSlideThumbnail = (
+        slideId: string,
+        data: { shapes: Shape[]; texts: TextItem[] },
+        isFirst: boolean = false
+    ) => {
         const container = document.createElement("div");
         document.body.appendChild(container);
-
         const root = ReactDOM.createRoot(container);
 
         const handleRendered = (id: string, dataUrl: string) => {
-            setThumbnails((prev) => ({ ...prev, [id]: dataUrl }));
+            setThumbnails(prev => ({ ...prev, [id]: dataUrl }));
+
+            if (isFirst) {
+                uploadFirstSlideThumbnail(dataUrl, presentationId)
+                    .catch(err => console.error("썸네일 업로드 실패:", err));
+            }
+
             root.unmount();
             document.body.removeChild(container);
         };
 
         root.render(
-            <ThumbnailRenderer
-                slideId={slideId}
-                slideData={data}
-                onRendered={handleRendered}
-            />
+            <ThumbnailRenderer slideId={slideId} slideData={data} onRendered={handleRendered} />
         );
     };
+
+    async function uploadFirstSlideThumbnail(dataUrl: string, presentationId: string) {
+        const blob = dataURLtoBlob(dataUrl);
+        const form = new FormData();
+        form.append("file", blob, `thumb_${presentationId}.png`);
+        form.append("presentationId", presentationId);
+
+        // API 엔드포인트 다시 확인
+        const url = `${API_BASE}/images/thumbnails/presentation`;
+        const res = await fetch(url, { method: "POST", body: form });
+
+        console.log("[thumb upload] status:", res.status);
+        const bodyText = await res.text();
+        console.log("[thumb upload] body:", bodyText);
+
+        if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
+    }
+
+
 
     useEffect(() => {
         const client = new Client({
@@ -187,7 +222,9 @@ const MainLayout: React.FC = () => {
             setSlideData(newSlideData);
             setCurrentSlide(orders[0]?.id ?? "");
 
-            orders.forEach(({ id }) => renderSlideThumbnail(id, newSlideData[id]));
+            orders.forEach(({ id }, idx) => {
+                renderSlideThumbnail(id, newSlideData[id], idx === 0);
+            });
         } catch (err) {
             console.error("슬라이드 fetch 중 오류:", err);
         }
@@ -473,7 +510,11 @@ const MainLayout: React.FC = () => {
                 })),
             }),
         });
-
+        const newFirst = newSlides[0]?.id;
+        if (newFirst) {
+            const data = newSlideData[newFirst] ?? { shapes: [], texts: [] };
+            renderSlideThumbnail(newFirst, data, true);
+        }
     };
 
 
@@ -517,6 +558,12 @@ const MainLayout: React.FC = () => {
                 })),
             }),
         });
+
+        const newFirst = updatedSlides[0]?.id;
+        if (newFirst) {
+            const data = slideData[newFirst] ?? { shapes: [], texts: [] };
+            renderSlideThumbnail(newFirst, data, true);
+        }
 
     };
 
@@ -621,9 +668,23 @@ const MainLayout: React.FC = () => {
                             setShapes={(updater) => updateShapes(updater)}
                             setTexts={(updater) => updateTexts(updater)}
                             currentSlide={currentSlide}
-                            updateThumbnail={(slideId, dataUrl) =>
-                                setThumbnails((prev) => ({...prev, [slideId]: dataUrl}))
-                            }
+                            updateThumbnail={(slideId, dataUrl) => {
+                                setThumbnails(prev => ({...prev, [slideId]: dataUrl}));
+
+                                const firstSlideId = slides[0]?.id;
+                                if (firstSlideId && slideId === firstSlideId) {
+                                    const quickHash = dataUrl.slice(0, 4096);
+                                    if (quickHash !== lastUploadedHashRef.current) {
+                                        lastUploadedHashRef.current = quickHash;
+                                        if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+                                        uploadTimerRef.current = setTimeout(() => {
+                                            uploadFirstSlideThumbnail(dataUrl, presentationId)
+                                                .catch(err => console.error("썸네일 업로드 실패:", err));
+                                            uploadTimerRef.current = null;
+                                        }, 400);
+                                    }
+                                }
+                            }}
                             sendEdit={() => broadcastFullSlideFromData(slideData)}
                             setIsTyping={setIsTyping}
                             defaultFontSize={defaultFontSize}

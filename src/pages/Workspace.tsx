@@ -8,6 +8,15 @@ import LoginModal from '../components/LoginModal/LoginModal';
 import RegisterModal from '../components/RegisterModal/RegisterModal';
 import './Workspace.css';
 
+const BASE_URL = import.meta.env.VITE_BASE_URL || '';
+
+const toAbsolute = (url?: string | null) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    return `${BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+};
+
+
 const Workspace: React.FC = () => {
     const navigate = useNavigate();
     // const { isAuthenticated } = useAuth();
@@ -54,7 +63,7 @@ const Workspace: React.FC = () => {
             const mappedPresentations: Presentation[] = data.map((item) => ({
                 id: item.presentation.presentation_id,
                 title: item.presentation.presentation_title,
-                thumbnail: item.thumbnail_url,
+                thumbnail: toAbsolute(item.thumbnail_url),
                 createdAt: item.presentation.last_revision_date, // 임시로 last_revision_date 사용
                 updatedAt: item.presentation.last_revision_date,
                 userId: item.presentation.user_id,
