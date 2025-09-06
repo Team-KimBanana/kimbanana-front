@@ -2,189 +2,194 @@ import React, { useEffect, useState } from "react";
 import "./History.css";
 import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
-import HistoryList from "../components/HistoryList/HistoryList.tsx";
+import HistoryList, { HistoryEntry } from "../components/HistoryList/HistoryList.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import { Shape, TextItem } from "../types/types.ts";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { fetchHistoryList, fetchHistorySlides } from "../api/history";
 
-type SlideContent = {
-    shapes: Shape[];
-    texts: TextItem[];
-};
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
-const fetchMockSlides = async (): Promise<{ [id: string]: SlideContent }> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve({
-                "1": {
-                    shapes: [
-                        {
-                            id: 999,
-                            type: "rectangle",
-                            x: 150,
-                            y: 150,
-                            width: 150,
-                            height: 100,
-                            color: "#FF9900",
-                        },
-                    ],
-                    texts: [],
-                },
-                "2": {
-                    shapes: [
-                        {
-                            id: 3,
-                            type: "triangle",
-                            x: 300,
-                            y: 200,
-                            points: [0, -50, -50, 50, 50, 50],
-                            color: "#00CC66",
-                        },
-                    ],
-                    texts: [],
-                },
-            });
-        }, 500);
-    });
-};
+type SlideData = { shapes: Shape[]; texts: TextItem[] };
+type SlideOrder = { id: string; order: number };
+
+function formatKorean(tsISO: string) {
+    const d = new Date(tsISO);
+    const yyyy = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const dd = d.getDate();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return {
+        dateOnly: `${yyyy}년 ${m}월 ${dd}일`,
+        dateTime: `${yyyy}년 ${m}월 ${dd}일 ${hh}:${mm}`,
+    };
+}
 
 const History: React.FC = () => {
     const navigate = useNavigate();
+    const { presentationId } = useParams();
 
-    const [slideDataMap, setSlideDataMap] = useState<{ [id: string]: SlideContent }>({});
+    const [currentSlidesOrder, setCurrentSlidesOrder] = useState<SlideOrder[]>([]);
+    const [slideDataMap, setSlideDataMap] = useState<Record<string, SlideData>>({});
+    const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
     const [selectedCurrentSlide, setSelectedCurrentSlide] = useState<string>("");
+
+    const [restoreSlidesOrder, setRestoreSlidesOrder] = useState<SlideOrder[]>([]);
     const [selectedRestoreSlide, setSelectedRestoreSlide] = useState<string | null>(null);
-    const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
-    const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
+
+    const [histories, setHistories] = useState<HistoryEntry[]>([]);
+    const [selectedHistoryUid, setSelectedHistoryUid] = useState<string | null>(null);
+
+    const selectedTitle =
+        histories.find((h) => h.historyId === selectedHistoryUid)?.displayDateTime ?? "히스토리";
+
+    const fetchCurrentSlides = async () => {
+        if (!presentationId) return;
+        try {
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+                mode: "cors",
+                credentials: "omit",
+                headers: { Accept: "application/json" },
+            });
+            if (!res.ok) return;
+
+            const json = await res.json();
+            const slideList: { slide_id: string; order: number; data?: unknown }[] =
+                Array.isArray(json.slides) ? json.slides : [];
+            if (slideList.length === 0) return;
+
+            const orders: SlideOrder[] = slideList
+                .map((s) => ({ id: s.slide_id, order: s.order }))
+                .sort((a, b) => a.order - b.order);
+
+            const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s) => {
+                let d: unknown = s.data;
+
+                if (d === undefined) {
+                    const detail = await fetch(
+                        `${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`,
+                        { mode: "cors", credentials: "omit", headers: { Accept: "application/json" } }
+                    );
+                    if (detail.ok) {
+                        const dj = await detail.json();
+                        d = dj?.data ?? { shapes: [], texts: [] };
+                    } else {
+                        d = { shapes: [], texts: [] };
+                    }
+                }
+
+                if (typeof d === "string") {
+                    try {
+                        d = JSON.parse(d);
+                    } catch {
+                        d = { shapes: [], texts: [] };
+                    }
+                }
+
+                let shapes: Shape[] = [];
+                let texts: TextItem[] = [];
+                if (d && typeof d === "object") {
+                    const obj = d as { shapes?: Shape[]; texts?: TextItem[] };
+                    shapes = Array.isArray(obj.shapes) ? obj.shapes : [];
+                    texts = Array.isArray(obj.texts) ? obj.texts : [];
+                }
+
+                return [s.slide_id, { shapes, texts }] as [string, SlideData];
+            });
+
+            const entries = await Promise.all(dataPromises);
+            const newData: Record<string, SlideData> = Object.fromEntries(entries);
+
+            setCurrentSlidesOrder(orders);
+            setSlideDataMap((prev) => ({ ...prev, ...newData }));
+            setSelectedCurrentSlide((prev) => prev || orders[0].id);
+        } catch (err) {
+            console.error("슬라이드 fetch 중 오류:", err);
+        }
+    };
+
+    useEffect(() => {
+        (async () => {
+            if (!presentationId) return;
+            const list = await fetchHistoryList(presentationId);
+            const mapped: HistoryEntry[] = list.map((it) => {
+                const f = formatKorean(it.lastRevisionISO);
+                return {
+                    historyId: `${it.historyId}__${it.lastRevisionISO}`,
+                    displayDateOnly: f.dateOnly,
+                    displayDateTime: f.dateTime,
+                };
+            });
+            setHistories(mapped);
+        })();
+    }, [presentationId]);
+
+    useEffect(() => {
+        fetchCurrentSlides();
+    }, [presentationId]);
+
+    useEffect(() => {
+        (async () => {
+            if (!presentationId || !selectedHistoryUid) {
+                setRestoreSlidesOrder([]);
+                setSelectedRestoreSlide(null);
+                return;
+            }
+
+            try {
+                const baseHistoryId = selectedHistoryUid.split("__")[0];
+
+                const raw = await fetchHistorySlides(presentationId, baseHistoryId);
+                if (raw.length === 0) {
+                    setRestoreSlidesOrder([]);
+                    setSelectedRestoreSlide(null);
+                    return;
+                }
+
+                const prefixedOrders: SlideOrder[] = raw
+                    .map((s) => ({ id: `restore-${selectedHistoryUid}-${s.slide_id}`, order: s.order }))
+                    .sort((a, b) => a.order - b.order);
+
+                const dataPromises: Promise<[string, SlideData]>[] = raw.map(async (s) => {
+                    let d: unknown = s.data;
+                    if (typeof d === "string") {
+                        try {
+                            d = JSON.parse(d);
+                        } catch {
+                            d = { shapes: [], texts: [] };
+                        }
+                    }
+
+                    let shapes: Shape[] = [];
+                    let texts: TextItem[] = [];
+                    if (d && typeof d === "object") {
+                        const obj = d as { shapes?: Shape[]; texts?: TextItem[] };
+                        shapes = Array.isArray(obj.shapes) ? obj.shapes : [];
+                        texts = Array.isArray(obj.texts) ? obj.texts : [];
+                    }
+
+                    const id = `restore-${selectedHistoryUid}-${s.slide_id}`;
+                    return [id, { shapes, texts }] as [string, SlideData];
+                });
+
+                const entries = await Promise.all(dataPromises);
+                const restoreDataMap: Record<string, SlideData> = Object.fromEntries(entries);
+
+                setRestoreSlidesOrder(prefixedOrders);
+                setSlideDataMap((prev) => ({ ...prev, ...restoreDataMap }));
+                setSelectedRestoreSlide(prefixedOrders[0]?.id ?? null);
+            } catch (e) {
+                console.error("히스토리 단건 조회 실패:", e);
+                setRestoreSlidesOrder([]);
+                setSelectedRestoreSlide(null);
+            }
+        })();
+    }, [presentationId, selectedHistoryUid]);
 
     const shownSlideId = selectedRestoreSlide || selectedCurrentSlide;
-    const current = slideDataMap[selectedCurrentSlide];
-    const isRestoreEnabled = selectedCurrentSlide && selectedRestoreSlide;
-
-    const historyData: {
-        [timestamp: string]: {
-            [slideId: string]: SlideContent;
-        };
-    } = {
-        "2025년 2월 13일 12:00": {
-            "1": {
-                shapes: [
-                    { id: 1, type: "rectangle", x: 100, y: 100, width: 200, height: 100, color: "#FF0000" },
-                ],
-                texts: [],
-            },
-            "2": {
-                shapes: [
-                    { id: 2, type: "circle", x: 400, y: 200, radius: 50, color: "#00AAFF" },
-                ],
-                texts: [],
-            },
-            "3": {
-                shapes: [
-                    { id: 1, type: "rectangle", x: 100, y: 100, width: 200, height: 100, color: "#FF0000" },
-                ],
-                texts: [],
-            },
-            "4": {
-                shapes: [
-                    { id: 2, type: "circle", x: 400, y: 200, radius: 50, color: "#00AAFF" },
-                ],
-                texts: [],
-            },
-            "5": {
-                shapes: [
-                    { id: 1, type: "rectangle", x: 100, y: 100, width: 200, height: 100, color: "#FF0000" },
-                ],
-                texts: [],
-            },
-            "6": {
-                shapes: [
-                    { id: 2, type: "circle", x: 400, y: 200, radius: 50, color: "#00AAFF" },
-                ],
-                texts: [],
-            },
-        },
-        "2025년 2월 11일 16:00": {
-            "1": {
-                shapes: [
-                    {
-                        id: 3,
-                        type: "triangle",
-                        x: 300,
-                        y: 200,
-                        points: [0, -50, -50, 50, 50, 50],
-                        color: "#00CC66",
-                    },
-                ],
-                texts: [],
-            },
-        },
-    };
-
-    const getRestoreSlides = (version: string | null): string[] => {
-        if (!version || !historyData[version]) return [];
-        return Object.keys(historyData[version]).map(
-            (slideId) => `restore-${version}-${slideId}`
-        );
-    };
-
-    const restoreSlides = getRestoreSlides(selectedVersion);
-
-    useEffect(() => {
-        const loadSlides = async () => {
-            const slides = await fetchMockSlides();
-            setSlideDataMap(slides);
-
-            const firstSlideId = Object.keys(slides)[0];
-            if (firstSlideId) {
-                setSelectedCurrentSlide(firstSlideId);
-            }
-        };
-
-        loadSlides();
-    }, []);
-
-    useEffect(() => {
-        if (!selectedVersion || !historyData[selectedVersion]) return;
-
-        const newEntries: { [id: string]: SlideContent } = {};
-        Object.entries(historyData[selectedVersion]).forEach(([slideId, content]) => {
-            const id = `restore-${selectedVersion}-${slideId}`;
-            newEntries[id] = content;
-        });
-
-        setSlideDataMap((prev) => ({
-            ...prev,
-            ...newEntries,
-        }));
-    }, [selectedVersion]);
-
-    const handleSelectVersion = (timestamp: string) => {
-        setSelectedVersion(timestamp);
-        setSelectedRestoreSlide(null);
-    };
-
-    const handleRestoreSlide = () => {
-        if (!selectedRestoreSlide || !selectedCurrentSlide) return;
-
-        const restoreData = slideDataMap[selectedRestoreSlide];
-        setSlideDataMap((prev) => ({
-            ...prev,
-            [selectedCurrentSlide]: restoreData,
-        }));
-
-        // 썸네일 강제 갱신
-        setTimeout(() => {
-            const canvas = document.querySelector("canvas");
-            if (canvas) {
-                const dataUrl = canvas.toDataURL();
-                setThumbnails((prev) => ({ ...prev, [selectedCurrentSlide]: dataUrl }));
-            }
-        }, 0);
-
-        setSelectedRestoreSlide(null);
-    };
+    const current = shownSlideId ? slideDataMap[shownSlideId] : undefined;
 
     const handleApplyRestore = () => {
         if (window.confirm("복원된 내용을 적용하시겠습니까?")) {
@@ -199,16 +204,12 @@ const History: React.FC = () => {
 
     return (
         <div className="history">
-            <Header
-                variant="history"
-                title={selectedVersion || "히스토리"}
-                onApplyRestore={handleApplyRestore}
-            />
+            <Header variant="history" title={selectedTitle} onApplyRestore={handleApplyRestore} />
 
             <div className="history-body">
                 <Sidebar
                     variant="current"
-                    slides={Object.keys(slideDataMap).filter(id => !id.startsWith("restore-"))}
+                    slides={currentSlidesOrder.map((s) => s.id)}
                     currentSlide={selectedCurrentSlide}
                     setCurrentSlide={setSelectedCurrentSlide}
                     thumbnails={thumbnails}
@@ -222,7 +223,7 @@ const History: React.FC = () => {
 
                 <Sidebar
                     variant="restore"
-                    slides={restoreSlides}
+                    slides={restoreSlidesOrder.map((s) => s.id)}
                     currentSlide={selectedRestoreSlide || ""}
                     setCurrentSlide={(id) => {
                         const newId = typeof id === "function" ? id(selectedRestoreSlide ?? "") : id;
@@ -235,8 +236,8 @@ const History: React.FC = () => {
                         setSelectedRestoreSlide(selected || null);
                         return slides;
                     }}
-                    onRestoreSelected={handleRestoreSlide}
-                    isRestoreEnabled={!!isRestoreEnabled}
+                    onRestoreSelected={() => {}}
+                    isRestoreEnabled={!!(selectedCurrentSlide && selectedRestoreSlide)}
                 />
 
                 <div className="history-canvas">
@@ -245,29 +246,9 @@ const History: React.FC = () => {
                         selectedColor="#000000"
                         setActiveTool={() => {}}
                         shapes={current?.shapes || []}
-                        setShapes={(updatedShapes) => {
-                            setSlideDataMap((prev) => ({
-                                ...prev,
-                                [selectedCurrentSlide]: {
-                                    ...prev[selectedCurrentSlide],
-                                    shapes: typeof updatedShapes === "function"
-                                        ? updatedShapes(prev[selectedCurrentSlide].shapes)
-                                        : updatedShapes,
-                                },
-                            }));
-                        }}
+                        setShapes={() => {}}
                         texts={current?.texts || []}
-                        setTexts={(updatedTexts) => {
-                            setSlideDataMap((prev) => ({
-                                ...prev,
-                                [selectedCurrentSlide]: {
-                                    ...prev[selectedCurrentSlide],
-                                    texts: typeof updatedTexts === "function"
-                                        ? updatedTexts(prev[selectedCurrentSlide].texts)
-                                        : updatedTexts,
-                                },
-                            }));
-                        }}
+                        setTexts={() => {}}
                         currentSlide={shownSlideId}
                         updateThumbnail={() => {}}
                         sendEdit={() => {}}
@@ -279,19 +260,14 @@ const History: React.FC = () => {
                     />
 
                     {Object.entries(slideDataMap).map(([id, data]) => (
-                        <ThumbnailRenderer
-                            key={id}
-                            slideId={id}
-                            slideData={data}
-                            onRendered={handleThumbnailRendered}
-                        />
+                        <ThumbnailRenderer key={id} slideId={id} slideData={data} onRendered={handleThumbnailRendered} />
                     ))}
                 </div>
 
                 <HistoryList
-                    historyData={historyData}
-                    selected={selectedVersion}
-                    onSelect={handleSelectVersion}
+                    histories={histories}
+                    selectedHistoryId={selectedHistoryUid}
+                    onSelect={(uid) => setSelectedHistoryUid(uid)}
                 />
             </div>
         </div>

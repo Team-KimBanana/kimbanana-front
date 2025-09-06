@@ -1,43 +1,49 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import "./HistoryList.css";
-import { Shape, TextItem } from "../../types/types.ts";
+
+export type HistoryEntry = {
+    historyId: string;
+    displayDateTime: string;
+    displayDateOnly: string;
+};
 
 interface HistoryListProps {
-    historyData: {
-        [timestamp: string]: {
-            [slideId: string]: {
-                shapes: Shape[];
-                texts: TextItem[];
-            };
-        };
-    };
-    selected: string | null;
-    onSelect: (timestamp: string) => void;
+    histories: HistoryEntry[];
+    selectedHistoryId: string | null;
+    onSelect: (historyId: string) => void;
 }
 
-const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSelect }) => {
-    const grouped: { [date: string]: string[] } = {};
-    Object.keys(historyData).forEach((timestamp) => {
-        const parts = timestamp.split(" ");
-        const date = parts.slice(0, 3).join(" ");
-        if (!grouped[date]) grouped[date] = [];
-        grouped[date].push(timestamp);
-    });
+const HistoryList: React.FC<HistoryListProps> = ({ histories, selectedHistoryId, onSelect }) => {
+    const grouped = useMemo(() => {
+        const map: Record<string, HistoryEntry[]> = {};
 
-    const [openDates, setOpenDates] = useState<{ [date: string]: boolean }>({});
+        histories.forEach((h) => {
+            if (!map[h.displayDateOnly]) {
+                map[h.displayDateOnly] = [];
+            }
 
-    const toggleDate = (date: string) => {
-        setOpenDates((prev) => ({
-            ...prev,
-            [date]: !prev[date],
-        }));
-    };
+            const exists = map[h.displayDateOnly].some(
+                (item) => item.historyId.split("__")[0] === h.historyId.split("__")[0]
+            );
+
+            if (!exists) {
+                map[h.displayDateOnly].push(h);
+            }
+        });
+
+        return map;
+    }, [histories]);
+
+
+    const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
+    const toggleDate = (date: string) =>
+        setOpenDates((prev) => ({ ...prev, [date]: !prev[date] }));
 
     return (
         <div className="history-right">
             <h3 className="history-title">history</h3>
 
-            {Object.entries(grouped).map(([date, timestamps]) => (
+            {Object.entries(grouped).map(([date, items]) => (
                 <div className="history-group" key={date}>
                     <div className="history-date" onClick={() => toggleDate(date)}>
                         {openDates[date] ? "▼" : "▶"} {date}
@@ -45,15 +51,15 @@ const HistoryList: React.FC<HistoryListProps> = ({ historyData, selected, onSele
 
                     {openDates[date] && (
                         <div className="history-timestamps">
-                            {timestamps.map((timestamp) => {
-                                const isActive = selected === timestamp;
+                            {items.map((it) => {
+                                const isActive = selectedHistoryId === it.historyId;
                                 return (
                                     <div
-                                        key={timestamp}
+                                        key={it.historyId}
                                         className={`history-item ${isActive ? "active" : ""}`}
-                                        onClick={() => onSelect(timestamp)}
+                                        onClick={() => onSelect(it.historyId)}
                                     >
-                                        <span>{timestamp}</span>
+                                        <span>{it.displayDateTime}</span>
                                     </div>
                                 );
                             })}

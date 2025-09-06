@@ -107,13 +107,8 @@ const MainLayout: React.FC = () => {
         form.append("file", blob, `thumb_${presentationId}.png`);
         form.append("presentationId", presentationId);
 
-        // API 엔드포인트 다시 확인
         const url = `${API_BASE}/images/thumbnails/presentation`;
         const res = await fetch(url, { method: "POST", body: form });
-
-        console.log("[thumb upload] status:", res.status);
-        const bodyText = await res.text();
-        console.log("[thumb upload] body:", bodyText);
 
         if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
     }
@@ -635,18 +630,109 @@ const MainLayout: React.FC = () => {
         }
     };
 
+    const handleSaveHistory = async () => {
+        try {
+            if (!slides.length) {
+                alert("저장할 슬라이드가 없습니다.");
+                return;
+            }
+
+            const offset = new Date().getTimezoneOffset() * 60000; // 분→ms
+            const isoLocal = new Date(Date.now() - offset).toISOString().slice(0, -1);
+
+            const payload = {
+                last_revision_user_id: "manual-save",
+                slides: slides.map(s => {
+                    const data = slideData[s.id] ?? { shapes: [], texts: [] };
+
+                    const dataString = JSON.stringify({
+                        shapes: (data.shapes ?? []).map(shape => ({
+                            id: shape.id,
+                            type: shape.type,
+                            x: shape.x,
+                            y: shape.y,
+                            rotation: shape.rotation ?? 0,
+                            ...(shape.type === "rectangle" && {
+                                width: shape.width || 0,
+                                height: shape.height || 0,
+                                color: shape.color || "#000000",
+                            }),
+                            ...(shape.type === "circle" && {
+                                radiusX: shape.radiusX ?? shape.radius ?? 50,
+                                radiusY: shape.radiusY ?? shape.radius ?? 50,
+                                color: shape.color || "#000000",
+                            }),
+                            ...(shape.type === "triangle" && {
+                                points: shape.points || [],
+                                color: shape.color || "#000000",
+                            }),
+                            ...(shape.type === "image" && {
+                                width: shape.width || 0,
+                                height: shape.height || 0,
+                                imageSrc: shape.imageSrc || "",
+                            }),
+                        })),
+                        texts: (data.texts ?? []).map(t => ({
+                            id: t.id,
+                            text: t.text,
+                            x: t.x,
+                            y: t.y,
+                            color: t.color || "#000000",
+                            fontSize: t.fontSize || 18,
+                        })),
+                    });
+
+                    return {
+                        slide_id: s.id,
+                        order: s.order,
+                        last_revision_user_id: "manual-save",
+                        last_revision_date: isoLocal,
+                        data: dataString,
+                    };
+                }),
+            };
+
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/histories`, {
+                method: "POST",
+                mode: "cors",
+                credentials: "omit",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) {
+                let detail: string = "";
+                try {
+                    detail = await res.text();
+                } catch {
+                    // ignore error
+                }
+                console.error("히스토리 저장 실패:", res.status, detail);
+                alert(`히스토리 저장 실패 (${res.status})`);
+                return;
+            }
+
+            alert("히스토리를 저장했어요!");
+        } catch (err) {
+            console.error("히스토리 저장 중 오류:", err);
+            alert("히스토리 저장 중 오류가 발생했어요.");
+        }
+    };
+
 
 
     return (
         <div className="main-layout" ref={containerRef}>
             <Header
                 variant="main"
+                presentationId={id}
                 isFullscreen={isFullscreen}
                 onEnterFullscreen={enter}
                 onExitFullscreen={exit}
                 title={presentationTitle}
                 onTitleChange={setPresentationTitle}
                 onTitleSave={savePresentationTitle}
+                onSaveHistory={handleSaveHistory}
             />
             <div className="content">
                 <Sidebar variant="main"

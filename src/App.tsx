@@ -12,7 +12,7 @@ const App = () => {
                 <Routes>
                     <Route path="/" element={<Workspace />} />
                     <Route path="/editor/:id" element={<MainLayout />} />
-                    <Route path="/history" element={<History />} />
+                    <Route path="/history/:presentationId" element={<History />} />
                 </Routes>
             </BrowserRouter>
         </AuthProvider>
