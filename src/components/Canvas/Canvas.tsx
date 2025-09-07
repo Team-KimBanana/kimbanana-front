@@ -563,7 +563,6 @@ const Canvas: React.FC<CanvasProps> = ({
                             )}
                             {shape.type === "image" && (
                                 <CanvasImage
-                                    key={shape.id}
                                     shape={shape}
                                     onSelect={() => {
                                         setSelectedShapeId(shape.id);
@@ -573,23 +572,19 @@ const Canvas: React.FC<CanvasProps> = ({
                                         onSelectText(null);
                                     }}
                                     onDrag={(newX, newY) => {
-                                        const updated = {...shape, x: newX, y: newY};
-                                        setShapes((prev) =>
-                                            prev.map((s) => (s.id === shape.id ? updated : s))
-                                        );
+                                        const updated = { ...shape, x: newX, y: newY };
+                                        setShapes((prev) => prev.map((s) => (s.id === shape.id ? updated : s)));
                                         sendEdit();
                                     }}
                                     onResize={(updatedShape) => {
-                                        setShapes((prev) =>
-                                            prev.map((s) => (s.id === updatedShape.id ? updatedShape : s))
-                                        );
+                                        setShapes((prev) => prev.map((s) => (s.id === updatedShape.id ? updatedShape : s)));
                                         sendEdit();
                                     }}
-                                    registerRef={(node) => {
-                                        if (node) shapeRefs.current.set(shape.id, node);
-                                    }}
+                                    registerRef={(node) => { if (node) shapeRefs.current.set(shape.id, node); }}
+                                    draggable={isDraggableShape(shape.id)}
                                 />
                             )}
+
                             {shape.type === "line" && (
                                 <Line
                                     key={shape.id}
@@ -788,6 +783,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
 
                         onKeyDown={(e) => {
+                            if (e.key === "Backspace" || e.key === "Delete") {
+                                e.stopPropagation();
+                            }
+
                             if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
 
@@ -823,65 +822,48 @@ const CanvasImage: React.FC<{
     onDrag: (x: number, y: number) => void;
     onResize: (updated: Shape) => void;
     registerRef: (node: Konva.Image | null) => void;
-}> = ({shape, onSelect, onDrag, onResize, registerRef}) => {
+    draggable?: boolean;
+}> = ({ shape, onSelect, onDrag, onResize, registerRef, draggable = false }) => {
     const [image] = useImage(shape.imageSrc || "", "anonymous");
     const imageRef = useRef<Konva.Image | null>(null);
-    const transformerRef = useRef<Konva.Transformer | null>(null);
 
     useEffect(() => {
-        if (imageRef.current && transformerRef.current) {
-            transformerRef.current.nodes([imageRef.current]);
-            transformerRef.current.getLayer()?.batchDraw();
-        }
     }, [image]);
 
     return (
-        <>
-            <Image
-                ref={(node) => {
-                    imageRef.current = node;
-                    registerRef(node);
-                }}
-                image={image}
-                x={shape.x}
-                y={shape.y}
-                width={shape.width}
-                height={shape.height}
-                draggable
-                onClick={onSelect}
-                onTransformEnd={() => {
-                    const node = imageRef.current;
-                    if (!node) return;
-
-                    const scaleX = node.scaleX();
-                    const scaleY = node.scaleY();
-
-                    const updated = {
-                        ...shape,
-                        x: node.x(),
-                        y: node.y(),
-                        width: node.width() * scaleX,
-                        height: node.height() * scaleY,
-                    };
-
-                    // scale 초기화
-                    node.scaleX(1);
-                    node.scaleY(1);
-
-                    onResize(updated);
-                }}
-                onDragEnd={(e) => {
-                    const {x, y} = e.target.position();
-                    onDrag(x, y);
-                }}
-            />
-            <Transformer
-                ref={transformerRef}
-                boundBoxFunc={(oldBox, newBox) => {
-                    return newBox.width < 5 || newBox.height < 5 ? oldBox : newBox;
-                }}
-            />
-        </>
+        <Image
+            ref={(node) => {
+                imageRef.current = node;
+                registerRef(node);
+            }}
+            image={image}
+            x={shape.x}
+            y={shape.y}
+            width={shape.width}
+            height={shape.height}
+            draggable={draggable}
+            onClick={onSelect}
+            onTransformEnd={() => {
+                const node = imageRef.current;
+                if (!node) return;
+                const scaleX = node.scaleX();
+                const scaleY = node.scaleY();
+                const updated = {
+                    ...shape,
+                    x: node.x(),
+                    y: node.y(),
+                    width: node.width() * scaleX,
+                    height: node.height() * scaleY,
+                };
+                node.scaleX(1);
+                node.scaleY(1);
+                onResize(updated);
+            }}
+            onDragEnd={(e) => {
+                const { x, y } = e.target.position();
+                onDrag(x, y);
+            }}
+        />
     );
 };
 

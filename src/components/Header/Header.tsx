@@ -16,7 +16,7 @@ interface HeaderProps {
     onExitFullscreen?: () => void;
     onApplyRestore?: () => Promise<void> | void;
     presentationId?: string;
-    onSaveHistory?: () => void;
+    onSaveHistory?: () => void | Promise<void | boolean>;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -127,7 +127,19 @@ const Header: React.FC<HeaderProps> = ({
                         <img src="/assets/headerIcon/fullscreen.svg" alt="fullscreen" />
                     </button>
 
-                    <button className="header-btn history-btn" onClick={goHistory}>
+                    <button
+                        className="header-btn history-btn"
+                        onClick={async () => {
+                            try {
+                                if (onSaveHistory) {
+                                    await onSaveHistory();
+                                }
+                            } finally {
+                                goHistory();
+                            }
+                        }}
+                        title="히스토리"
+                    >
                         <img src="/assets/headerIcon/history.svg" alt="History" />
                     </button>
 

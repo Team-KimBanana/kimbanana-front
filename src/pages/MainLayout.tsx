@@ -513,9 +513,16 @@ const MainLayout: React.FC = () => {
     };
 
 
-
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const ae = document.activeElement as HTMLElement | null;
+            const isTypingInForm =
+                !!ae &&
+                (ae.tagName === "INPUT" ||
+                    ae.tagName === "TEXTAREA" || ae.isContentEditable);
+
+            if (isTypingInForm) return;
+
             if (
                 e.key === "Backspace" &&
                 !isTyping &&
@@ -528,11 +535,9 @@ const MainLayout: React.FC = () => {
             }
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
     }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId]);
-
-
 
 
     const handleReorderSlides = async (newOrder: string[]) => {
@@ -634,7 +639,7 @@ const MainLayout: React.FC = () => {
         try {
             if (!slides.length) {
                 alert("저장할 슬라이드가 없습니다.");
-                return;
+                return false;
             }
 
             const offset = new Date().getTimezoneOffset() * 60000; // 분→ms
@@ -709,13 +714,15 @@ const MainLayout: React.FC = () => {
                 }
                 console.error("히스토리 저장 실패:", res.status, detail);
                 alert(`히스토리 저장 실패 (${res.status})`);
-                return;
+                return false;
             }
 
-            alert("히스토리 저장 성공");
+            // alert("히스토리 저장 성공");
+            return true;
         } catch (err) {
             console.error("히스토리 저장 중 오류:", err);
             alert("히스토리 저장 중 오류가 발생");
+            return false;
         }
     };
 
