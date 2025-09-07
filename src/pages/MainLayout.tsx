@@ -712,10 +712,10 @@ const MainLayout: React.FC = () => {
                 return;
             }
 
-            alert("히스토리를 저장했어요!");
+            alert("히스토리 저장 성공");
         } catch (err) {
             console.error("히스토리 저장 중 오류:", err);
-            alert("히스토리 저장 중 오류가 발생했어요.");
+            alert("히스토리 저장 중 오류가 발생");
         }
     };
 

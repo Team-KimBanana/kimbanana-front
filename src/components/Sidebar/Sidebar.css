@@ -96,3 +96,17 @@
     color: #FFB93E;
     cursor: pointer;
 }
+
+.restore-text.disabled {
+    color: #999;
+    cursor: not-allowed;
+}
+
+.restore-text.active {
+    color: #999;
+    cursor: pointer;
+}
+
+.restore-text.active:hover {
+    color: #ffb93e;
+}

@@ -14,7 +14,7 @@ interface HeaderProps {
     isFullscreen?: boolean;
     onEnterFullscreen?: () => void;
     onExitFullscreen?: () => void;
-    onApplyRestore?: () => void;
+    onApplyRestore?: () => Promise<void> | void;
     presentationId?: string;
     onSaveHistory?: () => void;
 }
@@ -86,10 +86,10 @@ const Header: React.FC<HeaderProps> = ({
                         {onApplyRestore && (
                             <button
                                 className="header-btn restore-apply-btn"
-                                onClick={() => {
+                                onClick={async () => {
+                                    if (!onApplyRestore) return;
                                     if (window.confirm("복원된 내용을 적용하시겠습니까?")) {
-                                        onApplyRestore();
-                                        goEditor();
+                                        await onApplyRestore();
                                     }
                                 }}
                             >

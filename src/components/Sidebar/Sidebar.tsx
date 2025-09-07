@@ -18,6 +18,8 @@ interface SidebarProps {
     setSelectedSlides?: React.Dispatch<React.SetStateAction<string[]>>;
     onRestoreSelected?: () => void;
     isRestoreEnabled?: boolean;
+    onRestoreAll?: () => void;
+    isRestoreAllEnabled?: boolean;
     setSelectedCurrentSlide?: (id: string) => void;
     setSelectedRestoreSlide?: (id: string) => void;
 }
@@ -34,6 +36,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                                              setSelectedSlides,
                                              onRestoreSelected,
                                              isRestoreEnabled,
+                                             onRestoreAll,
+                                             isRestoreAllEnabled,
                                              setSelectedCurrentSlide,
                                              setSelectedRestoreSlide,
                                          }) => {
@@ -144,7 +148,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     >
                         선택한 슬라이드 복원
                     </div>
-                    <div className="restore-text" style={{ color: "#aaa" }}>
+                    <div
+                        className={`restore-text ${isRestoreAllEnabled ? "active" : "disabled"}`}
+                        onClick={isRestoreAllEnabled ? onRestoreAll : undefined}
+                    >
                         전체 슬라이드 복원
                     </div>
                 </div>

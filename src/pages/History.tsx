@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import "./History.css";
 import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
@@ -8,28 +8,46 @@ import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer
 import { Shape, TextItem } from "../types/types.ts";
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchHistoryList, fetchHistorySlides } from "../api/history";
+import { useAuth } from "../contexts/AuthContext.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 type SlideData = { shapes: Shape[]; texts: TextItem[] };
 type SlideOrder = { id: string; order: number };
+type Mapping = { target_slide: string; history_slide: string };
 
-function formatKorean(tsISO: string) {
-    const d = new Date(tsISO);
+const baseHistoryId = (uid: string) => uid.split("__")[0];
+
+const toKoreanDate = (iso: string) => {
+    const d = new Date(iso);
     const yyyy = d.getFullYear();
     const m = d.getMonth() + 1;
     const dd = d.getDate();
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
+    return { dateOnly: `${yyyy}년 ${m}월 ${dd}일`, dateTime: `${yyyy}년 ${m}월 ${dd}일 ${hh}:${mm}` };
+};
+
+const toSlideData = (raw: unknown): SlideData => {
+    let d = raw;
+    if (typeof d === "string") {
+        try { d = JSON.parse(d); } catch { d = {}; }
+    }
+    const obj = d && typeof d === "object" ? (d as any) : {};
     return {
-        dateOnly: `${yyyy}년 ${m}월 ${dd}일`,
-        dateTime: `${yyyy}년 ${m}월 ${dd}일 ${hh}:${mm}`,
+        shapes: Array.isArray(obj.shapes) ? obj.shapes : [],
+        texts: Array.isArray(obj.texts) ? obj.texts : [],
     };
-}
+};
+
+const cloneSlideData = (s: SlideData) =>
+    (typeof structuredClone === "function" ? structuredClone(s) : JSON.parse(JSON.stringify(s)));
 
 const History: React.FC = () => {
     const navigate = useNavigate();
     const { presentationId } = useParams();
+    const { user } = useAuth?.() ?? ({ user: null } as never);
+    const userId = user?.name || user?.id || "anonymous";
 
     const [currentSlidesOrder, setCurrentSlidesOrder] = useState<SlideOrder[]>([]);
     const [slideDataMap, setSlideDataMap] = useState<Record<string, SlideData>>({});
@@ -42,165 +60,183 @@ const History: React.FC = () => {
     const [histories, setHistories] = useState<HistoryEntry[]>([]);
     const [selectedHistoryUid, setSelectedHistoryUid] = useState<string | null>(null);
 
-    const selectedTitle =
-        histories.find((h) => h.historyId === selectedHistoryUid)?.displayDateTime ?? "히스토리";
+    const [pendingMappings, setPendingMappings] = useState<Mapping[]>([]);
 
-    const fetchCurrentSlides = async () => {
-        if (!presentationId) return;
-        try {
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
-                mode: "cors",
-                credentials: "omit",
-                headers: { Accept: "application/json" },
-            });
-            if (!res.ok) return;
+    const restoreIdToHistoryId = useRef<Record<string, string>>({});
+    const toHistorySlideId = (prefixedId: string) => restoreIdToHistoryId.current[prefixedId] ?? prefixedId;
 
-            const json = await res.json();
-            const slideList: { slide_id: string; order: number; data?: unknown }[] =
-                Array.isArray(json.slides) ? json.slides : [];
-            if (slideList.length === 0) return;
+    const selectedTitle = useMemo(
+        () => histories.find(h => h.historyId === selectedHistoryUid)?.displayDateTime ?? "히스토리",
+        [histories, selectedHistoryUid]
+    );
 
-            const orders: SlideOrder[] = slideList
-                .map((s) => ({ id: s.slide_id, order: s.order }))
-                .sort((a, b) => a.order - b.order);
-
-            const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s) => {
-                let d: unknown = s.data;
-
-                if (d === undefined) {
-                    const detail = await fetch(
-                        `${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`,
-                        { mode: "cors", credentials: "omit", headers: { Accept: "application/json" } }
-                    );
-                    if (detail.ok) {
-                        const dj = await detail.json();
-                        d = dj?.data ?? { shapes: [], texts: [] };
-                    } else {
-                        d = { shapes: [], texts: [] };
-                    }
-                }
-
-                if (typeof d === "string") {
-                    try {
-                        d = JSON.parse(d);
-                    } catch {
-                        d = { shapes: [], texts: [] };
-                    }
-                }
-
-                let shapes: Shape[] = [];
-                let texts: TextItem[] = [];
-                if (d && typeof d === "object") {
-                    const obj = d as { shapes?: Shape[]; texts?: TextItem[] };
-                    shapes = Array.isArray(obj.shapes) ? obj.shapes : [];
-                    texts = Array.isArray(obj.texts) ? obj.texts : [];
-                }
-
-                return [s.slide_id, { shapes, texts }] as [string, SlideData];
-            });
-
-            const entries = await Promise.all(dataPromises);
-            const newData: Record<string, SlideData> = Object.fromEntries(entries);
-
-            setCurrentSlidesOrder(orders);
-            setSlideDataMap((prev) => ({ ...prev, ...newData }));
-            setSelectedCurrentSlide((prev) => prev || orders[0].id);
-        } catch (err) {
-            console.error("슬라이드 fetch 중 오류:", err);
-        }
-    };
+    const shownSlideId = useMemo(
+        () => selectedRestoreSlide || selectedCurrentSlide || "",
+        [selectedRestoreSlide, selectedCurrentSlide]
+    );
+    const current = shownSlideId ? slideDataMap[shownSlideId] : undefined;
 
     useEffect(() => {
+        if (!presentationId) return;
         (async () => {
-            if (!presentationId) return;
-            const list = await fetchHistoryList(presentationId);
-            const mapped: HistoryEntry[] = list.map((it) => {
-                const f = formatKorean(it.lastRevisionISO);
-                return {
-                    historyId: `${it.historyId}__${it.lastRevisionISO}`,
-                    displayDateOnly: f.dateOnly,
-                    displayDateTime: f.dateTime,
-                };
-            });
-            setHistories(mapped);
+            try {
+                const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+                    mode: "cors", credentials: "omit", headers: { Accept: "application/json" },
+                });
+                if (!res.ok) return;
+
+                const json = await res.json();
+                const slideList: { slide_id: string; order: number; data?: unknown }[] =
+                    Array.isArray(json.slides) ? json.slides : [];
+                if (slideList.length === 0) return;
+
+                const orders = slideList
+                    .map(s => ({ id: s.slide_id, order: s.order }))
+                    .sort((a, b) => a.order - b.order);
+
+                const entries = await Promise.all(slideList.map(async s => {
+                    let d: unknown = s.data;
+                    if (d === undefined) {
+                        const dRes = await fetch(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`, {
+                            mode: "cors", credentials: "omit", headers: { Accept: "application/json" },
+                        });
+                        d = dRes.ok ? (await dRes.json())?.data : undefined;
+                    }
+                    return [s.slide_id, toSlideData(d)] as [string, SlideData];
+                }));
+
+                setCurrentSlidesOrder(orders);
+                setSlideDataMap(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+                setSelectedCurrentSlide(prev => prev || orders[0].id);
+            } catch (e) {
+                console.error("현재 슬라이드 불러오기 오류:", e);
+            }
         })();
     }, [presentationId]);
 
     useEffect(() => {
-        fetchCurrentSlides();
+        if (!presentationId) return;
+        (async () => {
+            const list = await fetchHistoryList(presentationId);
+            setHistories(
+                list.map(it => {
+                    const f = toKoreanDate(it.lastRevisionISO);
+                    return { historyId: `${it.historyId}__${it.lastRevisionISO}`, displayDateOnly: f.dateOnly, displayDateTime: f.dateTime };
+                })
+            );
+        })();
     }, [presentationId]);
 
     useEffect(() => {
+        if (!presentationId || !selectedHistoryUid) {
+            setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
+            setPendingMappings([]);   restoreIdToHistoryId.current = {};
+            return;
+        }
+
         (async () => {
-            if (!presentationId || !selectedHistoryUid) {
-                setRestoreSlidesOrder([]);
-                setSelectedRestoreSlide(null);
-                return;
-            }
-
             try {
-                const baseHistoryId = selectedHistoryUid.split("__")[0];
-
-                const raw = await fetchHistorySlides(presentationId, baseHistoryId);
+                const raw = await fetchHistorySlides(presentationId, baseHistoryId(selectedHistoryUid));
                 if (raw.length === 0) {
-                    setRestoreSlidesOrder([]);
-                    setSelectedRestoreSlide(null);
+                    setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
                     return;
                 }
 
-                const prefixedOrders: SlideOrder[] = raw
-                    .map((s) => ({ id: `restore-${selectedHistoryUid}-${s.slide_id}`, order: s.order }))
+                // restore id ↔ history id 테이블 구성
+                restoreIdToHistoryId.current = {};
+                const orders: SlideOrder[] = raw
+                    .map(s => {
+                        const rid = `restore-${selectedHistoryUid}-${s.slide_id}`;
+                        restoreIdToHistoryId.current[rid] = s.slide_id;
+                        return { id: rid, order: s.order };
+                    })
                     .sort((a, b) => a.order - b.order);
 
-                const dataPromises: Promise<[string, SlideData]>[] = raw.map(async (s) => {
-                    let d: unknown = s.data;
-                    if (typeof d === "string") {
-                        try {
-                            d = JSON.parse(d);
-                        } catch {
-                            d = { shapes: [], texts: [] };
-                        }
-                    }
+                const entries = await Promise.all(
+                    raw.map(async s => {
+                        const id = `restore-${selectedHistoryUid}-${s.slide_id}`;
+                        return [id, toSlideData(s.data)] as [string, SlideData];
+                    })
+                );
 
-                    let shapes: Shape[] = [];
-                    let texts: TextItem[] = [];
-                    if (d && typeof d === "object") {
-                        const obj = d as { shapes?: Shape[]; texts?: TextItem[] };
-                        shapes = Array.isArray(obj.shapes) ? obj.shapes : [];
-                        texts = Array.isArray(obj.texts) ? obj.texts : [];
-                    }
-
-                    const id = `restore-${selectedHistoryUid}-${s.slide_id}`;
-                    return [id, { shapes, texts }] as [string, SlideData];
-                });
-
-                const entries = await Promise.all(dataPromises);
-                const restoreDataMap: Record<string, SlideData> = Object.fromEntries(entries);
-
-                setRestoreSlidesOrder(prefixedOrders);
-                setSlideDataMap((prev) => ({ ...prev, ...restoreDataMap }));
-                setSelectedRestoreSlide(prefixedOrders[0]?.id ?? null);
+                setRestoreSlidesOrder(orders);
+                setSlideDataMap(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+                setSelectedRestoreSlide(orders[0]?.id ?? null);
             } catch (e) {
                 console.error("히스토리 단건 조회 실패:", e);
-                setRestoreSlidesOrder([]);
-                setSelectedRestoreSlide(null);
+                setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
             }
         })();
     }, [presentationId, selectedHistoryUid]);
 
-    const shownSlideId = selectedRestoreSlide || selectedCurrentSlide;
-    const current = shownSlideId ? slideDataMap[shownSlideId] : undefined;
+    const handleThumbnailRendered = useCallback((slideId: string, dataUrl: string) => {
+        setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+    }, []);
 
-    const handleApplyRestore = () => {
-        if (window.confirm("복원된 내용을 적용하시겠습니까?")) {
-            alert("복원이 완료되었습니다.");
-            navigate("/");
+    const handleRestoreSelectedOne = useCallback(() => {
+        if (!selectedCurrentSlide || !selectedRestoreSlide) return;
+
+        const restoreData = slideDataMap[selectedRestoreSlide];
+        if (restoreData) {
+            setSlideDataMap(prev => ({ ...prev, [selectedCurrentSlide]: cloneSlideData(restoreData) }));
         }
-    };
 
-    const handleThumbnailRendered = (slideId: string, dataUrl: string) => {
-        setThumbnails((prev) => ({ ...prev, [slideId]: dataUrl }));
-    };
+        const historySlideId = toHistorySlideId(selectedRestoreSlide);
+        setPendingMappings(prev => [
+            ...prev.filter(m => m.target_slide !== selectedCurrentSlide),
+            { target_slide: selectedCurrentSlide, history_slide: historySlideId },
+        ]);
+    }, [selectedCurrentSlide, selectedRestoreSlide, slideDataMap]);
+
+    const handleApplyRestore = useCallback(async () => {
+        if (!presentationId || !selectedHistoryUid) return;
+        try {
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/restorations`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({
+                    type: "partial",
+                    history_id: baseHistoryId(selectedHistoryUid),
+                    last_revision_user_id: userId,
+                    mappings: pendingMappings,
+                }),
+            });
+            if (res.status >= 200 && res.status < 400) {
+                alert("선택한 슬라이드가 복원되었습니다."); navigate(`/editor/${presentationId}`);
+            } else {
+                const detail = await res.text().catch(() => "");
+                alert(`부분 복원 실패 (${res.status})\n${detail || "서버 응답이 없습니다."}`);
+            }
+        } catch (e) {
+            console.error(e); alert("복원 적용 중 오류가 발생했습니다.");
+        }
+    }, [presentationId, selectedHistoryUid, pendingMappings, userId]);
+
+    const handleRestoreAllSlides = useCallback(async () => {
+        if (!presentationId || !selectedHistoryUid) return;
+        if (!window.confirm("선택한 히스토리의 전체 슬라이드를 현재 프레젠테이션에 복원할까요?")) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/presentations/${presentationId}/restorations`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({
+                    type: "all",
+                    history_id: baseHistoryId(selectedHistoryUid),
+                    last_revision_user_id: userId,
+                }),
+            });
+            if (res.status >= 200 && res.status < 400) {
+                alert("복원이 완료되었습니다."); navigate(`/editor/${presentationId}`);
+            } else {
+                const detail = await res.text().catch(() => "");
+                alert(`히스토리 복원 실패 (${res.status})\n${detail || "서버 응답이 없습니다."}`);
+            }
+        } catch (e) {
+            console.error("히스토리 복원 중 오류:", e);
+            alert("히스토리 복원 중 오류가 발생했습니다.");
+        }
+    }, [presentationId, selectedHistoryUid, userId, navigate]);
 
     return (
         <div className="history">
@@ -209,35 +245,35 @@ const History: React.FC = () => {
             <div className="history-body">
                 <Sidebar
                     variant="current"
-                    slides={currentSlidesOrder.map((s) => s.id)}
+                    slides={currentSlidesOrder.map(s => s.id)}
                     currentSlide={selectedCurrentSlide}
                     setCurrentSlide={setSelectedCurrentSlide}
                     thumbnails={thumbnails}
                     selectedSlides={[selectedCurrentSlide]}
-                    setSelectedSlides={(slides) => {
+                    setSelectedSlides={slides => {
                         const selected = typeof slides === "function" ? slides([])[0] : slides[0];
-                        setSelectedCurrentSlide(selected || "");
-                        return slides;
+                        setSelectedCurrentSlide(selected || ""); return slides;
                     }}
                 />
 
                 <Sidebar
                     variant="restore"
-                    slides={restoreSlidesOrder.map((s) => s.id)}
+                    slides={restoreSlidesOrder.map(s => s.id)}
                     currentSlide={selectedRestoreSlide || ""}
-                    setCurrentSlide={(id) => {
+                    setCurrentSlide={id => {
                         const newId = typeof id === "function" ? id(selectedRestoreSlide ?? "") : id;
                         setSelectedRestoreSlide(newId);
                     }}
                     thumbnails={thumbnails}
                     selectedSlides={selectedRestoreSlide ? [selectedRestoreSlide] : []}
-                    setSelectedSlides={(slides) => {
+                    setSelectedSlides={slides => {
                         const selected = typeof slides === "function" ? slides([])[0] : slides[0];
-                        setSelectedRestoreSlide(selected || null);
-                        return slides;
+                        setSelectedRestoreSlide(selected || null); return slides;
                     }}
-                    onRestoreSelected={() => {}}
+                    onRestoreSelected={handleRestoreSelectedOne}
                     isRestoreEnabled={!!(selectedCurrentSlide && selectedRestoreSlide)}
+                    onRestoreAll={handleRestoreAllSlides}
+                    isRestoreAllEnabled={!!selectedHistoryUid}
                 />
 
                 <div className="history-canvas">
@@ -267,7 +303,7 @@ const History: React.FC = () => {
                 <HistoryList
                     histories={histories}
                     selectedHistoryId={selectedHistoryUid}
-                    onSelect={(uid) => setSelectedHistoryUid(uid)}
+                    onSelect={uid => setSelectedHistoryUid(uid)}
                 />
             </div>
         </div>
