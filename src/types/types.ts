@@ -15,6 +15,13 @@ export interface Shape {
     color?: string;
     imageSrc?: string;
     strokeWidth?: number;
+    // for star
+    numPoints?: number;
+    innerRadius?: number;
+    outerRadius?: number;
+    // for arrow
+    pointerLength?: number;
+    pointerWidth?: number;
 }
 
 export interface TextItem {

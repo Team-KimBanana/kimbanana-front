@@ -17,6 +17,7 @@
     "konva": "^9.3.18",
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
+    "react-colorful": "^5.6.1",
     "react-dom": "^18.3.1",
     "react-konva": "18",
     "react-konva-utils": "^1.1.0",

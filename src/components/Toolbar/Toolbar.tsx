@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./Toolbar.css";
 import { Icon } from '@iconify/react';
+import AdvancedColorPicker from "./AdvancedColorPicker";
 
 interface ToolbarProps {
     setActiveTool: (tool: string) => void;
     activeTool: string;
+    selectedColor: string;
     setSelectedColor: (color: string) => void;
     defaultFontSize: number;
     setDefaultFontSize: (size: number) => void;
@@ -51,6 +53,7 @@ const resizeImage = (file: File, maxWidth = 1000): Promise<File> => {
 const Toolbar: React.FC<ToolbarProps> = ({
                                              setActiveTool,
                                              activeTool,
+                                             selectedColor,
                                              setSelectedColor,
                                              defaultFontSize,
                                              setDefaultFontSize,
@@ -61,14 +64,13 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              setEraserMode,
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
-    const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
     const [isTextMenuOpen, setIsTextMenuOpen] = useState(false);
 
     const shapeMenuRef = useRef<HTMLDivElement | null>(null);
-    const colorMenuRef = useRef<HTMLDivElement | null>(null);
     const textMenuRef = useRef<HTMLDivElement | null>(null);
 
-    const colors = ["#FF5733", "#33FF57", "#3385FF", "#F6DE55", "#000000","#D86868", "#CFA37A", "#4399B5", "#476C96" ];
+    const [showPicker, setShowPicker] = useState(false);
+    const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -76,9 +78,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
 
             if (shapeMenuRef.current && !shapeMenuRef.current.contains(target)) {
                 setIsShapeMenuOpen(false);
-            }
-            if (colorMenuRef.current && !colorMenuRef.current.contains(target)) {
-                setIsColorMenuOpen(false);
             }
             if (textMenuRef.current && !textMenuRef.current.contains(target)) {
                 setIsTextMenuOpen(false);
@@ -95,7 +94,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
         { name: "shapes", icon: "/assets/toolIcon/shapes.svg", isShapeButton: true },
         { name: "color", icon: "/assets/toolIcon/color.svg", isColorButton: true },
         { name: "pen", icon: "/assets/toolIcon/pen.svg" },
-        { name: "eraser", icon: "/assets/toolIcon/eraser.svg" }, // eraser.svg 없으면 임시 텍스트
+        { name: "eraser", icon: "/assets/toolIcon/eraser.svg" },
         { name: "image", icon: "/assets/toolIcon/image.svg" },
     ];
 
@@ -126,6 +125,14 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                         <img src="/assets/toolIcon/triangle.svg" alt="Triangle" />
                                         <span>삼각형</span>
                                     </button>
+                                    <button onClick={() => { setActiveTool("star"); setIsShapeMenuOpen(false); }}>
+                                        <Icon icon="mdi:star" width="18" height="18" />
+                                        <span>별</span>
+                                    </button>
+                                    <button onClick={() => { setActiveTool("arrow"); setIsShapeMenuOpen(false); }}>
+                                        <Icon icon="mdi:arrow-right" width="18" height="18" />
+                                        <span>화살표</span>
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -133,31 +140,29 @@ const Toolbar: React.FC<ToolbarProps> = ({
                 } else if (tool.isColorButton) {
                     return (
                         <div className="color-dropdown" key={tool.name}>
-                            <button className={`toolbar-btn ${isColorMenuOpen ? "active" : ""}`} onClick={() => {
-                                setIsColorMenuOpen((prev) => !prev);
-                                setActiveTool("color");
-                            }}>
+                            <button
+                                className={`toolbar-btn ${showPicker ? "active" : ""}`}
+                                onClick={(e) => {
+                                    setActiveTool("color");
+                                    setIsShapeMenuOpen(false);
+                                    setIsTextMenuOpen(false);
+                                    setPickerAnchor(e.currentTarget);
+                                    setShowPicker((prev) => !prev);
+                                }}
+                            >
                                 <img src={tool.icon} alt="Color" />
                             </button>
 
-                            {isColorMenuOpen && (
-                                <div className="color-menu" ref={colorMenuRef}>
-                                    {colors.map((color) => (
-                                        <button
-                                            key={color}
-                                            style={{
-                                                backgroundColor: color,
-                                                width: "24px",
-                                                height: "24px",
-                                                borderRadius: "50%",
-                                            }}
-                                            onClick={() => {
-                                                setSelectedColor(color);
-                                                setIsColorMenuOpen(false);
-                                            }}
-                                        />
-                                    ))}
-                                </div>
+                            {showPicker && (
+                                <AdvancedColorPicker
+                                    value={selectedColor}
+                                    onChange={(c) => {
+                                        setSelectedColor(c);
+                                    }}
+                                    onClose={() => setShowPicker(false)}
+                                    enableAlpha={true}
+                                    anchorEl={pickerAnchor}
+                                />
                             )}
                         </div>
                     );

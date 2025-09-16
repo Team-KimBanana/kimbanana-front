@@ -9,6 +9,10 @@
     position: relative;
 }
 
+.whiteboard-container:focus {
+    outline: none;
+}
+
 .whiteboard-container input {
     z-index: 10;
 }

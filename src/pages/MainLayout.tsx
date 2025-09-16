@@ -38,8 +38,8 @@ const MainLayout: React.FC = () => {
     const [eraserMode, setEraserMode] = useState<"size" | "area">("size");
     const stompClientRef = useRef<Client | null>(null);
     const subscriptionRef = useRef<StompSubscription | null>(null);
-    const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
-    const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+    const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
+    const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastBroadcastData = useRef<string>("");
     const containerRef = useRef<HTMLDivElement>(null);
@@ -512,24 +512,61 @@ const MainLayout: React.FC = () => {
         }
     };
 
+    const deleteSelected = () => {
+        if (!currentSlide) return;
+
+        if (selectedShapeId != null) {
+            setSlideData(prev => {
+                const cur = prev[currentSlide] ?? { shapes: [], texts: [] };
+                const newShapes = (cur.shapes ?? []).filter(s => s.id !== selectedShapeId);
+                const newData = {
+                    ...prev,
+                    [currentSlide]: { ...cur, shapes: newShapes }
+                };
+                setTimeout(() => broadcastFullSlideFromData(newData), 0);
+                return newData;
+            });
+            setSelectedShapeId(null);
+            return;
+        }
+
+        if (selectedTextId != null) {
+            setSlideData(prev => {
+                const cur = prev[currentSlide] ?? { shapes: [], texts: [] };
+                const newTexts = (cur.texts ?? []).filter(t => t.id !== selectedTextId);
+                const newData = {
+                    ...prev,
+                    [currentSlide]: { ...cur, texts: newTexts }
+                };
+                setTimeout(() => broadcastFullSlideFromData(newData), 0);
+                return newData;
+            });
+            setSelectedTextId(null);
+        }
+    };
+
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             const ae = document.activeElement as HTMLElement | null;
             const isTypingInForm =
-                !!ae &&
-                (ae.tagName === "INPUT" ||
-                    ae.tagName === "TEXTAREA" || ae.isContentEditable);
-
+                !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
             if (isTypingInForm) return;
 
-            if (
-                e.key === "Backspace" &&
-                !isTyping &&
-                slides.length > 1 &&
-                selectedShapeId === null &&
-                selectedTextId === null
-            ) {
+            const isBackspaceOrDelete = e.key === "Backspace" || e.key === "Delete";
+            if (!isBackspaceOrDelete || isTyping) return;
+
+            if (selectedShapeId != null || selectedTextId != null) {
+                e.preventDefault();
+                deleteSelected();
+                return;
+            }
+
+            if (activeTool !== "cursor") {
+                return;
+            }
+
+            if (slides.length > 1) {
                 e.preventDefault();
                 handleDeleteSlide(currentSlide);
             }
@@ -537,7 +574,15 @@ const MainLayout: React.FC = () => {
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId]);
+    }, [
+        currentSlide,
+        slides,
+        isTyping,
+        selectedShapeId,
+        selectedTextId,
+        activeTool,
+    ]);
+
 
 
     const handleReorderSlides = async (newOrder: string[]) => {
@@ -603,8 +648,9 @@ const MainLayout: React.FC = () => {
     const handleImageUpload = (imageUrl: string) => {
         const img = new window.Image();
         img.onload = () => {
+            const newId = Date.now();
             const newImage: Shape = {
-                id: Date.now(),
+                id: newId,
                 type: "image",
                 x: 200,
                 y: 150,
@@ -612,6 +658,7 @@ const MainLayout: React.FC = () => {
                 height: img.height,
                 imageSrc: imageUrl,
             };
+            setSelectedShapeId(newId);
             updateShapes((prev) => [...prev, newImage]);
         };
         img.src = imageUrl;
@@ -755,6 +802,7 @@ const MainLayout: React.FC = () => {
                         <Canvas
                             activeTool={activeTool}
                             selectedColor={selectedColor}
+                            setSelectedColor={setSelectedColor}
                             setActiveTool={setActiveTool}
                             shapes={slideData[currentSlide]?.shapes || []}
                             texts={slideData[currentSlide]?.texts || []}
@@ -797,6 +845,7 @@ const MainLayout: React.FC = () => {
                     <Toolbar
                         activeTool={activeTool}
                         setActiveTool={setActiveTool}
+                        selectedColor={selectedColor}
                         setSelectedColor={setSelectedColor}
                         defaultFontSize={defaultFontSize}
                         setDefaultFontSize={setDefaultFontSize}

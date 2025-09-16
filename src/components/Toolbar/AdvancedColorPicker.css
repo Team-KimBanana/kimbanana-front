@@ -1,0 +1,57 @@
+.acp-popover {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    padding: 10px;
+}
+
+.acp-popover .react-colorful {
+    width: 220px;
+    height: 180px;
+}
+
+.acp-popover .react-colorful__hue,
+.acp-popover .react-colorful__alpha {
+    height: 10px;
+    border-radius: 6px;
+}
+
+.acp-popover .react-colorful__saturation-pointer,
+.acp-popover .react-colorful__hue-pointer,
+.acp-popover .react-colorful__alpha-pointer {
+    width: 14px;
+    height: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+
+
+.acp-alpha {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.acp-alpha label {
+    font-size: 13px;
+    color: #666;
+    width: 44px; }
+
+.acp-alpha span {
+    font-size: 13px;
+    color: #666;
+    min-width: 28px;
+    text-align: right;
+}
+
+.acp-tools {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.acp-hex-input {
+    flex: 1;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 6px 8px;
+    border: 1px solid #ddd; border-radius: 6px;
+    font-size: 13px;
+}

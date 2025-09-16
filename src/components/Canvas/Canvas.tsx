@@ -1,16 +1,19 @@
 import React, {useState, useRef, useEffect} from "react";
-import {Stage, Layer, Rect, Ellipse, Line, Transformer, Text, Image} from "react-konva";
+import {Stage, Layer, Rect, Transformer, Text} from "react-konva";
 import {Shape, TextItem} from "../../types/types.ts";
 import Konva from "konva";
 import "./Canvas.css";
 import {KonvaEventObject} from "konva/lib/Node";
-import useImage from "use-image";
 import useDrawing from "../../hooks/useDrawing";
+import { ORIGINAL_HEIGHT, ORIGINAL_WIDTH, drawTrianglePoints, getDisplayDimensions } from "./canvasUtils";
+import CanvasImage from "./CanvasImage";
+import ShapeRenderer from "./ShapeRenderer";
 
 
 interface CanvasProps {
     activeTool: string;
     selectedColor: string;
+    setSelectedColor: (color: string) => void;
     setActiveTool: (tool: string) => void;
     shapes: Shape[];
     setShapes: React.Dispatch<React.SetStateAction<Shape[]>>;
@@ -35,28 +38,12 @@ interface CanvasProps {
     eraserMode?: "size" | "area";
 }
 
-const drawTrianglePoints = (
-    _x: number,
-    _y: number,
-    scaleX = 1,
-    scaleY = 1
-): number[] => {
-    const baseWidth = 100;
-    const baseHeight = 100;
-
-    const width = baseWidth * scaleX;
-    const height = baseHeight * scaleY;
-
-    return [
-        0, -height / 2,
-        -width / 2, height / 2,
-        width / 2, height / 2
-    ];
-};
+// moved triangle points util to canvasUtils
 
 const Canvas: React.FC<CanvasProps> = ({
                                            activeTool,
                                            selectedColor,
+                                           setSelectedColor,
                                            setActiveTool,
                                            shapes,
                                            setShapes,
@@ -78,7 +65,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                            eraserSize,
                                            eraserMode,
                                        }) => {
-    const [isComposing, setIsComposing] = useState(false);
+    const [, setIsComposing] = useState(false);
     const [selectedShapeId, setSelectedShapeId] = useState<number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<number | null>(null);
     const [editingText, setEditingText] = useState<TextItem | null>(null);
@@ -91,6 +78,8 @@ const Canvas: React.FC<CanvasProps> = ({
     const prevDataRef = useRef<{ shapes: Shape[]; texts: TextItem[] }>({shapes: [], texts: []});
     const thumbnailTimeout = useRef<NodeJS.Timeout | null>(null);
     const layerRef = useRef<Konva.Layer>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const focusRoot = () => rootRef.current?.focus();
 
     useEffect(() => {
         if (!stageRef.current) return;
@@ -98,7 +87,9 @@ const Canvas: React.FC<CanvasProps> = ({
         if (thumbnailTimeout.current) clearTimeout(thumbnailTimeout.current);
 
         thumbnailTimeout.current = setTimeout(() => {
-            const dataUrl = stageRef.current!.toDataURL({ pixelRatio: 0.25 });
+            const stage = stageRef.current;
+            if (!stage) return;
+            const dataUrl = stage.toDataURL({ pixelRatio: 0.25 });
             updateThumbnail(currentSlide, dataUrl);
         }, 300);
     }, [shapes, texts, currentSlide, updateThumbnail]);
@@ -149,20 +140,43 @@ const Canvas: React.FC<CanvasProps> = ({
                 id: Date.now(),
                 rotation: 0,
             };
+        } else if (activeTool === "star") {
+            newShape = {
+                type: "star",
+                x,
+                y,
+                numPoints: 5,
+                innerRadius: 20,
+                outerRadius: 40,
+                color: "#B0B0B0",
+                id: Date.now(),
+            };
+        } else if (activeTool === "arrow") {
+            newShape = {
+                type: "arrow",
+                x,
+                y,
+                points: [x, y, x + 100, y],
+                color: "#000000",
+                strokeWidth: 3,
+                id: Date.now(),
+            };
         }
 
         if (newShape) {
-            setShapes((prev) => {
-                return [...prev, newShape];
-            });
+            setShapes(prev => [...prev, newShape]);
 
             setSelectedShapeId(newShape.id);
             setSelectedTextId(null);
+            onSelectShape(String(newShape.id));
+            onSelectText(null);
 
             setTimeout(() => {
                 setActiveTool("cursor");
+                focusRoot();
             }, 0);
         }
+
 
 
     };
@@ -180,10 +194,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
         setTexts((prev) => {
             return [...prev, newText];
-            ;
         });
 
         setSelectedTextId(id);
+        onSelectText(String(id));
+        onSelectShape(null);
+        setTimeout(focusRoot, 0);
     };
 
     useEffect(() => {
@@ -214,7 +230,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
         if (activeTool === "text") {
             addText(x, y);
-        } else if (["rectangle", "circle", "triangle"].includes(activeTool)) {
+        } else if (["rectangle", "circle", "triangle", "star", "arrow"].includes(activeTool)) {
             addShape(x, y);
             setEditingText(null);
         } else {
@@ -260,6 +276,18 @@ const Canvas: React.FC<CanvasProps> = ({
                 } else if (shape.type === "image") {
                     newShape.width = node.width() * scaleX;
                     newShape.height = node.height() * scaleY;
+                } else if (shape.type === "star") {
+                    const avgScale = (scaleX + scaleY) / 2;
+                    newShape.innerRadius = (shape.innerRadius ?? 20) * avgScale;
+                    newShape.outerRadius = (shape.outerRadius ?? 40) * avgScale;
+                } else if (shape.type === "arrow") {
+                    const originalPoints = shape.points || [0, 0, 100, 0];
+                    const scaled = [...originalPoints];
+                    for (let i = 0; i < scaled.length; i += 2) {
+                        scaled[i] = scaled[i] * scaleX;
+                        scaled[i + 1] = scaled[i + 1] * scaleY;
+                    }
+                    newShape.points = scaled;
                 }
 
                 node.scaleX(1);
@@ -290,13 +318,13 @@ const Canvas: React.FC<CanvasProps> = ({
 
     useEffect(() => {
         if (stageRef.current) {
-            const {width, height, scale} = getDisplayDimensions();
+            const {width, height, scale} = getDisplayDimensions({ isFullscreen, isHistoryPage });
             stageRef.current.width(width);
             stageRef.current.height(height);
             stageRef.current.scale(scale);
 
-            const x = Math.max(0, (width - originalWidth * scale.x) / 2);
-            const y = Math.max(0, (height - originalHeight * scale.y) / 2);
+            const x = Math.max(0, (width - ORIGINAL_WIDTH * scale.x) / 2);
+            const y = Math.max(0, (height - ORIGINAL_HEIGHT * scale.y) / 2);
 
             stageRef.current.position({x, y});
             stageRef.current.batchDraw();
@@ -357,49 +385,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return activeTool === "cursor" && selectedTextId === id && editingText?.id !== id;
     };
 
-    const originalWidth = 1000;
-
-    const getDisplayDimensions = () => {
-        if (isFullscreen) {
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
-            const aspectRatio = originalWidth / originalHeight;
-            const screenAspectRatio = screenWidth / screenHeight;
-
-            let displayWidth, displayHeight;
-            if (screenAspectRatio > aspectRatio) {
-                displayHeight = screenHeight;
-                displayWidth = displayHeight * aspectRatio;
-            } else {
-                displayWidth = screenWidth ;
-                displayHeight = displayWidth / aspectRatio;
-            }
-
-            return {
-                width: displayWidth,
-                height: displayHeight,
-                scale: {
-                    x: displayWidth / originalWidth,
-                    y: displayHeight / originalHeight,
-                }
-            };
-        } else {
-            const displayWidth = isHistoryPage ? 800 : originalWidth;
-            const displayHeight = isHistoryPage ? 450 : originalHeight;
-            const scale = isHistoryPage
-                ? {
-                    x: displayWidth / originalWidth,
-                    y: displayHeight / originalHeight,
-                }
-                : {x: 1, y: 1};
-
-            return {
-                width: displayWidth,
-                height: displayHeight,
-                scale
-            };
-        }
-    };
+    // moved display dimension logic to canvasUtils
 
     const drawingHandlers = useDrawing(layerRef, {
         color: selectedColor,
@@ -410,13 +396,27 @@ const Canvas: React.FC<CanvasProps> = ({
     }, setShapes);
 
 
-    const originalHeight = 563;
-
-    const {width: displayWidth, height: displayHeight, scale} = getDisplayDimensions();
+    const {width: displayWidth, height: displayHeight, scale} = getDisplayDimensions({ isFullscreen, isHistoryPage });
 
 
     return (
         <div
+            ref={rootRef}
+            tabIndex={0}
+            onMouseDown={() => focusRoot()}
+            onKeyDown={(e) => {
+                if (e.key !== "Backspace" && e.key !== "Delete") return;
+
+                if (document.activeElement?.tagName === "TEXTAREA") return;
+
+                const hasSelection = selectedShapeId !== null || selectedTextId !== null;
+
+                if (hasSelection) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteShape();
+                } else { /* empty */ }
+            }}
             className="whiteboard-container"
             style={{
                 position: isFullscreen ? "fixed" : "relative",
@@ -438,8 +438,8 @@ const Canvas: React.FC<CanvasProps> = ({
                 width={displayWidth}
                 height={displayHeight}
                 scale={scale}
-                x={(displayWidth - originalWidth * scale.x) / 2}
-                y={(displayHeight - originalHeight * scale.y) / 2}
+                x={(displayWidth - ORIGINAL_WIDTH * scale.x) / 2}
+                y={(displayHeight - ORIGINAL_HEIGHT * scale.y) / 2}
                 onMouseDown={(e) => {
                     if (activeTool === "pen" || activeTool === "eraser") {
                         drawingHandlers.onMouseDown?.(e);
@@ -451,117 +451,11 @@ const Canvas: React.FC<CanvasProps> = ({
                 onMouseUp={activeTool === "pen" || activeTool === "eraser" ? drawingHandlers.onMouseUp : undefined}
             >
                 <Layer ref={layerRef}>
-                    <Rect width={originalWidth} height={originalHeight} fill="white" ref={backgroundRef}/>
+                    <Rect width={ORIGINAL_WIDTH} height={ORIGINAL_HEIGHT} fill="white" ref={backgroundRef}/>
 
                     {shapes.map((shape) => (
                         <React.Fragment key={shape.id}>
-                            {shape.type === "rectangle" && (
-                                <Rect
-                                    ref={(node) => node && shapeRefs.current.set(shape.id, node)}
-                                    x={shape.x!}
-                                    y={shape.y!}
-                                    width={shape.width!}
-                                    height={shape.height!}
-                                    fill={shape.color}
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
-                                    draggable={isDraggableShape(shape.id)}
-                                    onClick={() => {
-                                        setSelectedShapeId(shape.id);
-                                        setSelectedTextId(null);
-                                        setActiveTool("cursor");
-                                        onSelectShape(String(shape.id));
-                                        onSelectText(null);
-                                    }}
-                                    onDragEnd={(e) => {
-                                        const {x, y} = e.target.position();
-
-                                        const updatedShape = {...shape, x, y};
-
-                                        setShapes((prev) => {
-                                            const updated = prev.map((s) =>
-                                                s.id === shape.id ? updatedShape : s
-                                            );
-                                            setTimeout(() => sendEdit(), 0);
-                                            return updated;
-                                        });
-
-
-                                        e.target.getLayer()?.batchDraw();
-                                    }}
-                                />
-
-                            )}
-                            {shape.type === "circle" && (
-                                <Ellipse
-                                    ref={(node) => node && shapeRefs.current.set(shape.id, node)}
-                                    x={shape.x!}
-                                    y={shape.y!}
-                                    radiusX={shape.radiusX ?? shape.radius ?? 50}
-                                    radiusY={shape.radiusY ?? shape.radius ?? 50}
-                                    fill={shape.color}
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
-                                    draggable={isDraggableShape(shape.id)}
-                                    onClick={() => {
-                                        setSelectedShapeId(shape.id);
-                                        setSelectedTextId(null);
-                                        setActiveTool("cursor");
-                                        onSelectShape(String(shape.id));
-                                        onSelectText(null);
-                                    }}
-                                    onDragEnd={(e) => {
-                                        const {x, y} = e.target.position();
-
-                                        const updatedShape = {...shape, x, y};
-
-                                        setShapes((prev) => {
-                                            const updated = prev.map((s) =>
-                                                s.id === shape.id ? updatedShape : s
-                                            );
-                                            setTimeout(() => sendEdit(), 0);
-                                            return updated;
-                                        });
-
-
-                                        e.target.getLayer()?.batchDraw();
-                                    }}
-                                />
-                            )}
-                            {shape.type === "triangle" && (
-                                <Line
-                                    ref={(node) => node && shapeRefs.current.set(shape.id, node)}
-                                    x={shape.x!}
-                                    y={shape.y!}
-                                    points={shape.points!}
-                                    fill={shape.color}
-                                    rotation={shape.rotation || 0}
-                                    closed
-                                    onTransformEnd={() => handleTransformEnd(shape.id)}
-                                    draggable={isDraggableShape(shape.id)}
-                                    onClick={() => {
-                                        setSelectedShapeId(shape.id);
-                                        setSelectedTextId(null);
-                                        setActiveTool("cursor");
-                                        onSelectShape(String(shape.id));
-                                        onSelectText(null);
-                                    }}
-                                    onDragEnd={(e) => {
-                                        const {x, y} = e.target.position();
-
-                                        const updatedShape = {...shape, x, y};
-
-                                        setShapes((prev) => {
-                                            const updated = prev.map((s) =>
-                                                s.id === shape.id ? updatedShape : s
-                                            );
-                                            setTimeout(() => sendEdit(), 0);
-                                            return updated;
-                                        });
-
-                                        e.target.getLayer()?.batchDraw();
-                                    }}
-                                />
-                            )}
-                            {shape.type === "image" && (
+                            {shape.type === "image" ? (
                                 <CanvasImage
                                     shape={shape}
                                     onSelect={() => {
@@ -583,19 +477,22 @@ const Canvas: React.FC<CanvasProps> = ({
                                     registerRef={(node) => { if (node) shapeRefs.current.set(shape.id, node); }}
                                     draggable={isDraggableShape(shape.id)}
                                 />
-                            )}
-
-                            {shape.type === "line" && (
-                                <Line
-                                    key={shape.id}
-                                    points={shape.points || []}
-                                    stroke={shape.color || "black"}
-                                    strokeWidth={shape.strokeWidth || 3}
-                                    lineCap="round"
-                                    lineJoin="round"
+                            ) : (
+                                <ShapeRenderer
+                                    shape={shape}
+                                    setActiveTool={setActiveTool}
+                                    setSelectedColor={setSelectedColor}
+                                    onSelectShape={onSelectShape}
+                                    onSelectText={onSelectText}
+                                    setSelectedShapeId={setSelectedShapeId}
+                                    setSelectedTextId={setSelectedTextId}
+                                    setShapes={setShapes}
+                                    sendEdit={sendEdit}
+                                    shapeRefs={shapeRefs}
+                                    isDraggable={isDraggableShape(shape.id)}
+                                    onTransformEnd={handleTransformEnd}
                                 />
                             )}
-
                         </React.Fragment>
                     ))}
 
@@ -614,6 +511,7 @@ const Canvas: React.FC<CanvasProps> = ({
                                 setActiveTool("cursor");
                                 onSelectText(String(text.id));
                                 onSelectShape(null);
+                                if (text.color) setSelectedColor(text.color);
                             }}
                             onDblClick={() => {
                                 setEditingText(text);
@@ -744,22 +642,14 @@ const Canvas: React.FC<CanvasProps> = ({
 
                         onChange={(e) => {
                             const updated = e.target.value;
+                            setEditingText((prev) => (prev ? { ...prev, text: updated } : null));
 
-                            setEditingText((prev) => (prev ? {...prev, text: updated} : null));
-
-                            if (isComposing) return;
-
-                            setTexts((prev) =>
-                                prev.map((t) =>
-                                    t.id === editingText.id ? {...t, text: updated} : t
-                                )
-                            );
+                            // Avoid updating Konva stage on every keystroke to prevent input lag.
+                            // We will commit to texts on blur or Enter.
 
                             setIsTyping(true);
                             if (typingTimeout.current) clearTimeout(typingTimeout.current);
                             typingTimeout.current = setTimeout(() => setIsTyping(false), 500);
-
-                            sendEdit();
                         }}
 
                         onBlur={() => {
@@ -813,57 +703,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
             })()}
         </div>
-    );
-};
-
-const CanvasImage: React.FC<{
-    shape: Shape;
-    onSelect: () => void;
-    onDrag: (x: number, y: number) => void;
-    onResize: (updated: Shape) => void;
-    registerRef: (node: Konva.Image | null) => void;
-    draggable?: boolean;
-}> = ({ shape, onSelect, onDrag, onResize, registerRef, draggable = false }) => {
-    const [image] = useImage(shape.imageSrc || "", "anonymous");
-    const imageRef = useRef<Konva.Image | null>(null);
-
-    useEffect(() => {
-    }, [image]);
-
-    return (
-        <Image
-            ref={(node) => {
-                imageRef.current = node;
-                registerRef(node);
-            }}
-            image={image}
-            x={shape.x}
-            y={shape.y}
-            width={shape.width}
-            height={shape.height}
-            draggable={draggable}
-            onClick={onSelect}
-            onTransformEnd={() => {
-                const node = imageRef.current;
-                if (!node) return;
-                const scaleX = node.scaleX();
-                const scaleY = node.scaleY();
-                const updated = {
-                    ...shape,
-                    x: node.x(),
-                    y: node.y(),
-                    width: node.width() * scaleX,
-                    height: node.height() * scaleY,
-                };
-                node.scaleX(1);
-                node.scaleY(1);
-                onResize(updated);
-            }}
-            onDragEnd={(e) => {
-                const { x, y } = e.target.position();
-                onDrag(x, y);
-            }}
-        />
     );
 };
 
