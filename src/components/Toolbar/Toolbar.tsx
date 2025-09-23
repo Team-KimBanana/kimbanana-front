@@ -17,7 +17,7 @@ interface ToolbarProps {
     setEraserMode?: (mode: "size" | "area") => void;
 }
 
-const resizeImage = (file: File, maxWidth = 1000): Promise<File> => {
+const resizeImage = (file: File, maxWidth = 300): Promise<File> => {
     return new Promise((resolve) => {
         const img = new Image();
         const reader = new FileReader();
