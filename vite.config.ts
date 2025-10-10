@@ -5,6 +5,7 @@ export default defineConfig({
   // define: {
   //   global: 'globalThis',
   // },
+    base: '/kimbanana/ui/',
   server: {
     host: '0.0.0.0'
   },
