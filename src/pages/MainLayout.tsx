@@ -7,14 +7,20 @@ import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
+import { useAuth } from "../contexts/AuthContext";
 
 import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
-const WS_URL = import.meta.env.VITE_WS_URL;
+// 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
+const API_BASE = import.meta.env.DEV 
+    ? '/api'  // 개발 환경: Vite 프록시 사용
+    : import.meta.env.VITE_API_BASE_URL;
+const WS_URL = import.meta.env.DEV 
+    ? '/ws-api'  // 개발 환경: Vite 프록시 사용
+    : import.meta.env.VITE_WS_URL;
 
 function dataURLtoBlob(dataURL: string) {
     const [header, base64] = dataURL.split(",");
@@ -26,6 +32,7 @@ function dataURLtoBlob(dataURL: string) {
 }
 
 const MainLayout: React.FC = () => {
+    const { user } = useAuth();
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
@@ -336,7 +343,7 @@ const MainLayout: React.FC = () => {
         const payload = {
             slide_id: currentSlide,
             order: currentSlideOrder,
-            last_revision_user_id: "Hyehyun",
+            last_revision_user_id: user?.id || "anonymous",
             last_revision_date: lastRevisionDate,
             data: JSON.stringify({
                 shapes: normalizeShapes(slide.shapes),
@@ -693,7 +700,7 @@ const MainLayout: React.FC = () => {
             const isoLocal = new Date(Date.now() - offset).toISOString().slice(0, -1);
 
             const payload = {
-                last_revision_user_id: "manual-save",
+                last_revision_user_id: user?.id || "anonymous",
                 slides: slides.map(s => {
                     const data = slideData[s.id] ?? { shapes: [], texts: [] };
 
@@ -737,7 +744,7 @@ const MainLayout: React.FC = () => {
                     return {
                         slide_id: s.id,
                         order: s.order,
-                        last_revision_user_id: "manual-save",
+                        last_revision_user_id: user?.id || "anonymous",
                         last_revision_date: isoLocal,
                         data: dataString,
                     };

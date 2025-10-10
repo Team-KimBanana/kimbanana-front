@@ -22,7 +22,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
 
     useEffect(() => {
         clearError();
-    }, [clearError]);
+    }, []); // 모달이 열릴 때만 실행
 
     useEffect(() => {
         const strength = calculatePasswordStrength(formData.password);
@@ -96,9 +96,28 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
             return;
         }
 
+        // API 명세에 맞는 유효성 검사
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+            alert('올바른 이메일 형식을 입력해주세요.');
+            return;
+        }
+
+        const nameRegex = /^[a-zA-Z0-9_]{3,}$/;
+        if (!nameRegex.test(formData.name)) {
+            alert('이름은 최소 3자 이상의 영문/숫자/언더스코어만 사용 가능합니다.');
+            return;
+        }
+
+        const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{6,}$/;
+        if (!passwordRegex.test(formData.password)) {
+            alert('비밀번호는 영문과 숫자를 포함한 6자 이상이어야 합니다.');
+            return;
+        }
+
         const { confirmPassword, ...registerData } = formData;
-        const success = await register(registerData);
-        if (success) {
+        const result = await register(registerData);
+        if (result.success) {
             onClose();
         }
     };

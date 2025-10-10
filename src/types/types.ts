@@ -146,3 +146,38 @@ export interface PresentationDetailResponse {
 export interface CreatePresentationRequest {
     user_id: string;
 }
+
+// Auth 관련 타입들
+export interface SignUpRequest {
+    email: string;
+    name: string;
+    password: string;
+}
+
+export interface SignInRequest {
+    email: string;
+    password: string;
+}
+
+export interface AuthResponse {
+    accessToken: string;
+    refreshToken: string;
+}
+
+export interface UserInfo {
+    id: string;
+    email: string;
+    name: string;
+}
+
+// 프로필 API 응답 타입 (간소화된 버전)
+export interface ProfileResponse {
+    id: string;
+    email: string;
+    name: string;
+}
+
+export interface AuthError {
+    message: string;
+    code?: string;
+}

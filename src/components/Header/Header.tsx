@@ -40,8 +40,10 @@ const Header: React.FC<HeaderProps> = ({
     const presentationId = presentationIdProp ?? presentationIdParam ?? id;
 
     const handleLogout = () => {
-        logout();
-        navigate("/");
+        if (window.confirm("로그아웃 하시겠습니까?")) {
+            logout();
+            navigate("/");
+        }
     };
 
     const handleOAuthLogin = (provider: "google" | "github") => {
@@ -160,11 +162,9 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="auth-buttons">
                     {isAuthenticated ? (
                         <div className="user-profile">
-                            <img
-                                src={user?.profileImage || "/assets/default-avatar.png"}
-                                alt="Profile"
-                                className="profile-image"
-                            />
+                            <div className="profile-avatar">
+                                {user?.name?.charAt(0).toUpperCase() || 'U'}
+                            </div>
                             <div className="profile-dropdown">
                                 <span className="user-name">{user?.name}</span>
                                 <button onClick={handleLogout} className="logout-btn">

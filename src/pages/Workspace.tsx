@@ -3,7 +3,7 @@ import {useNavigate} from 'react-router-dom';
 import {Icon} from '@iconify/react';
 import Header from '../components/Header/Header';
 import {Presentation, PresentationResponse, CreatePresentationRequest} from '../types/types';
-// import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import LoginModal from '../components/LoginModal/LoginModal';
 import RegisterModal from '../components/RegisterModal/RegisterModal';
 import './Workspace.css';
@@ -12,14 +12,24 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || '';
 
 const toAbsolute = (url?: string | null) => {
     if (!url) return '';
-    if (/^https?:\/\//i.test(url)) return url;
+    
+    // 절대 URL인 경우 API 프록시를 통해 로드
+    if (/^https?:\/\//i.test(url)) {
+        // daisy.wisoft.io 도메인인 경우 프록시로 변환
+        if (url.includes('daisy.wisoft.io/kimbanana/app')) {
+            const path = url.replace(/^https?:\/\/daisy\.wisoft\.io\/kimbanana\/app/, '');
+            return import.meta.env.DEV ? `/api${path}` : url;
+        }
+        return url;
+    }
+    
     return `${BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
 };
 
 
 const Workspace: React.FC = () => {
     const navigate = useNavigate();
-    // const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const [presentations, setPresentations] = useState<Presentation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -27,8 +37,12 @@ const Workspace: React.FC = () => {
     const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(0);
+    const [thumbnailCache, setThumbnailCache] = useState<{ [key: string]: string }>({});
 
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+    // 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
+    const API_BASE_URL = import.meta.env.DEV 
+        ? '/api'  // 개발 환경: Vite 프록시 사용
+        : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
     // 검색 필터링 (제목 기준)
     const filtered = presentations.filter(p => p.title.includes(search));
@@ -40,20 +54,79 @@ const Workspace: React.FC = () => {
     const currentItems = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
 
+    // 인증 헤더를 포함하여 썸네일 이미지 가져오기
+    const fetchThumbnailWithAuth = async (thumbnailUrl: string): Promise<string> => {
+        if (!thumbnailUrl) return '/assets/default-thumbnail.png';
+        
+        // 이미 캐시에 있으면 반환
+        if (thumbnailCache[thumbnailUrl]) {
+            return thumbnailCache[thumbnailUrl];
+        }
+        
+        try {
+            const accessToken = localStorage.getItem('accessToken');
+            const headers: Record<string, string> = {};
+            
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            }
+            
+            const response = await fetch(thumbnailUrl, {
+                method: 'GET',
+                headers,
+            });
+            
+            if (!response.ok) {
+                return '/assets/default-thumbnail.png';
+            }
+            
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // 캐시에 저장
+            setThumbnailCache(prev => ({
+                ...prev,
+                [thumbnailUrl]: blobUrl
+            }));
+            
+            return blobUrl;
+        } catch (err) {
+            return '/assets/default-thumbnail.png';
+        }
+    };
+
     // API 함수들
     const fetchPresentations = async () => {
         try {
             setIsLoading(true);
             setError(null);
 
-            const response = await fetch(`${API_BASE_URL}/workspace/presentations`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                },
+            const requestData = {
+                user_id: user?.id || ""
+            };
+
+            const headers: Record<string, string> = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            };
+
+            // 로그인된 사용자의 경우 토큰 추가
+            const accessToken = localStorage.getItem('accessToken');
+            
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/workspace/presentations/list`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestData),
             });
 
             if (!response.ok) {
+                if (response.status === 403) {
+                    throw new Error('접근 권한이 없습니다. 로그인해주세요.');
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
@@ -64,41 +137,29 @@ const Workspace: React.FC = () => {
                 id: item.presentation.presentation_id,
                 title: item.presentation.presentation_title,
                 thumbnail: toAbsolute(item.thumbnail_url),
-                createdAt: item.presentation.last_revision_date, // 임시로 last_revision_date 사용
+                createdAt: item.presentation.last_revision_date,
                 updatedAt: item.presentation.last_revision_date,
                 userId: item.presentation.user_id,
-                isShared: false, // API에서 제공하지 않으므로 기본값
-                shareUrl: undefined, // API에서 제공하지 않으므로 기본값
+                isShared: false,
+                shareUrl: undefined,
             }));
 
             setPresentations(mappedPresentations);
+            
+            // 썸네일을 인증과 함께 다운로드
+            mappedPresentations.forEach(async (presentation) => {
+                const originalUrl = data.find(item => item.presentation.presentation_id === presentation.id)?.thumbnail_url;
+                if (originalUrl && originalUrl.includes('daisy.wisoft.io')) {
+                    const proxyUrl = originalUrl.replace(/^https?:\/\/daisy\.wisoft\.io\/kimbanana\/app/, '/api');
+                    const blobUrl = await fetchThumbnailWithAuth(proxyUrl);
+                    setPresentations(prev => prev.map(p => 
+                        p.id === presentation.id ? { ...p, thumbnail: blobUrl } : p
+                    ));
+                }
+            });
         } catch (err) {
             console.error('프레젠테이션 목록 조회 실패:', err);
             setError('프레젠테이션을 불러오는데 실패했습니다.');
-
-            // 에러 시 목 데이터 사용 (개발용)
-            const mockPresentations: Presentation[] = [
-                {
-                    id: '1',
-                    title: '프로젝트 기획안',
-                    thumbnail: '/assets/thumbnails/presentation1.png',
-                    createdAt: '2024-01-15T10:30:00Z',
-                    updatedAt: '2024-01-20T14:20:00Z',
-                    userId: 'user1',
-                    isShared: true,
-                    shareUrl: 'https://kimbanana.com/share/1'
-                },
-                {
-                    id: '2',
-                    title: '팀 미팅 자료',
-                    thumbnail: '/assets/thumbnails/presentation2.png',
-                    createdAt: '2024-01-10T09:15:00Z',
-                    updatedAt: '2024-01-18T16:45:00Z',
-                    userId: 'user1',
-                    isShared: false
-                }
-            ];
-            setPresentations(mockPresentations);
         } finally {
             setIsLoading(false);
         }
@@ -107,25 +168,32 @@ const Workspace: React.FC = () => {
     const createPresentation = async (): Promise<string | null> => {
         try {
             const requestData: CreatePresentationRequest = {
-                user_id: 'current_user' // 임시 사용자 ID (나중에 인증 시스템과 연동)
+                user_id: user?.id || 'anonymous' // 로그인된 사용자 ID 또는 익명
             };
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Accept': 'text/plain',
+            };
+
+            // 로그인된 사용자의 경우 토큰 추가
+            const accessToken = localStorage.getItem('accessToken');
+
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            }
 
             const response = await fetch(`${API_BASE_URL}/workspace/presentations`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'text/plain',
-                },
+                headers,
                 body: JSON.stringify(requestData),
             });
-            console.log('createPresentation response' + response);
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const presentationId: string = await response.text();
-            console.log('createPresentation' + presentationId);
 
             return presentationId;
         } catch (err) {
@@ -137,11 +205,20 @@ const Workspace: React.FC = () => {
 
     const deletePresentation = async (presentationId: string): Promise<boolean> => {
         try {
+            const headers: Record<string, string> = {
+                'Accept': 'application/json',
+            };
+
+            // 로그인된 사용자의 경우 토큰 추가
+            const accessToken = localStorage.getItem('accessToken');
+
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            }
+
             const response = await fetch(`${API_BASE_URL}/workspace/presentations/${presentationId}`, {
                 method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                },
+                headers,
             });
 
             if (!response.ok) {
@@ -157,8 +234,14 @@ const Workspace: React.FC = () => {
     };
 
     useEffect(() => {
-        fetchPresentations();
-    }, []);
+        // 로그인된 사용자만 API 호출
+        if (isAuthenticated) {
+            fetchPresentations();
+        } else {
+            // 비로그인 사용자는 로딩 상태 해제
+            setIsLoading(false);
+        }
+    }, [isAuthenticated]);
 
     // 검색 시 첫 페이지로 리셋
     useEffect(() => {
@@ -269,6 +352,127 @@ const Workspace: React.FC = () => {
         );
     }
 
+    // 로그인하지 않은 사용자를 위한 페이지
+    if (!isAuthenticated) {
+        return (
+            <div className="workspace">
+                <Header
+                    variant="workspace"
+                    onLoginClick={openLoginModal}
+                    onRegisterClick={openRegisterModal}
+                />
+                <div className="workspace-hero">
+                    <div className="hero-left">
+                        <h2 className="hero-title">
+                            슬라이드별 복원과 동시 편집으로,<br/>
+                            더 빠르고 효율적인 협업을 시작하세요
+                        </h2>
+                        <p className="hero-subtitle">
+                            로그인하고 나만의 프레젠테이션을 만들어보세요
+                        </p>
+                    </div>
+                    <div className="hero-right">
+                        <button className="create-presentation-btn" onClick={openLoginModal}>
+                            <Icon icon="material-symbols:add" width="24"/>
+                            로그인하고 시작하기
+                        </button>
+                    </div>
+                </div>
+                <div className="workspace-footer-bg">
+                    <div className="workspace-main">
+                        <div className="workspace-features">
+                            <h2 className="features-title">KimBanana의 특별한 기능</h2>
+                            <div className="features-grid">
+                                <div className="feature-card">
+                                    <div className="feature-icon">
+                                        <Icon icon="material-symbols:history" width="48"/>
+                                    </div>
+                                    <h3 className="feature-title">슬라이드별 복원</h3>
+                                    <p className="feature-description">
+                                        각 슬라이드의 변경 이력을 개별적으로 관리하고, 
+                                        원하는 시점으로 언제든 복원할 수 있습니다.
+                                    </p>
+                                </div>
+                                <div className="feature-card">
+                                    <div className="feature-icon">
+                                        <Icon icon="material-symbols:group" width="48"/>
+                                    </div>
+                                    <h3 className="feature-title">실시간 협업</h3>
+                                    <p className="feature-description">
+                                        여러 사용자가 동시에 편집하며, 
+                                        실시간으로 변경사항을 공유할 수 있습니다.
+                                    </p>
+                                </div>
+                                <div className="feature-card">
+                                    <div className="feature-icon">
+                                        <Icon icon="material-symbols:draw" width="48"/>
+                                    </div>
+                                    <h3 className="feature-title">직관적인 편집</h3>
+                                    <p className="feature-description">
+                                        드래그 앤 드롭으로 쉽게 도형을 추가하고, 
+                                        자유로운 그리기 도구로 아이디어를 표현하세요.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="demo-section">
+                            <h2 className="demo-title">데모 프레젠테이션 살펴보기</h2>
+                            <div className="demo-presentations">
+                                <div className="demo-card" onClick={() => navigate('/editor/demo-1')}>
+                                    <div className="demo-thumbnail">
+                                        <img src="/assets/demo/demo1.png" alt="비즈니스 기획서" 
+                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                    </div>
+                                    <div className="demo-content">
+                                        <h3 className="demo-card-title">비즈니스 기획서</h3>
+                                        <p className="demo-description">전문적인 비즈니스 프레젠테이션 템플릿</p>
+                                        <span className="demo-badge">데모</span>
+                                    </div>
+                                </div>
+                                <div className="demo-card" onClick={() => navigate('/editor/demo-2')}>
+                                    <div className="demo-thumbnail">
+                                        <img src="/assets/demo/demo2.png" alt="교육 자료" 
+                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                    </div>
+                                    <div className="demo-content">
+                                        <h3 className="demo-card-title">교육 자료</h3>
+                                        <p className="demo-description">시각적이고 이해하기 쉬운 교육용 템플릿</p>
+                                        <span className="demo-badge">데모</span>
+                                    </div>
+                                </div>
+                                <div className="demo-card" onClick={() => navigate('/editor/demo-3')}>
+                                    <div className="demo-thumbnail">
+                                        <img src="/assets/demo/demo3.png" alt="제품 소개" 
+                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                    </div>
+                                    <div className="demo-content">
+                                        <h3 className="demo-card-title">제품 소개</h3>
+                                        <p className="demo-description">매력적인 제품 프레젠테이션 템플릿</p>
+                                        <span className="demo-badge">데모</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {isLoginModalOpen && (
+                    <LoginModal
+                        onClose={() => setLoginModalOpen(false)}
+                        onSwitchToRegister={openRegisterModal}
+                    />
+                )}
+                {isRegisterModalOpen && (
+                    <RegisterModal
+                        onClose={() => setRegisterModalOpen(false)}
+                        onSwitchToLogin={openLoginModal}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    // 로그인한 사용자를 위한 기존 페이지
     return (
         <div className="workspace">
             <Header
