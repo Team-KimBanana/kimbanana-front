@@ -15,6 +15,10 @@ interface ToolbarProps {
     setEraserSize?: (size: number) => void;
     eraserMode?: "size" | "area";
     setEraserMode?: (mode: "size" | "area") => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
 }
 
 const resizeImage = (file: File, maxWidth = 300): Promise<File> => {
@@ -62,6 +66,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              setEraserSize,
                                              eraserMode = "size",
                                              setEraserMode,
+                                             onUndo,
+                                             onRedo,
+                                             canUndo = false,
+                                             canRedo = false,
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isTextMenuOpen, setIsTextMenuOpen] = useState(false);
@@ -313,10 +321,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
             })}
 
             <div className="divider"></div>
-            <button className="toolbar-btn">
+            <button className="toolbar-btn" onClick={onUndo} disabled={!canUndo} title="이전">
                 <img src="/assets/toolIcon/before.svg" alt="Undo" />
             </button>
-            <button className="toolbar-btn">
+            <button className="toolbar-btn" onClick={onRedo} disabled={!canRedo} title="이후">
                 <img src="/assets/toolIcon/after.svg" alt="Redo" />
             </button>
         </div>

@@ -216,7 +216,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }, [editingText]);
 
     const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-        // 도형 위를 클릭하면 아무것도 하지 않음
         if (e.target !== backgroundRef.current) return;
 
         const stage = stageRef.current;
