@@ -44,9 +44,9 @@ const Header: React.FC<HeaderProps> = ({
         navigate("/");
     };
 
-    const handleOAuthLogin = (provider: "google" | "github") => {
-        window.location.href = `/api/auth/${provider}`;
-    };
+    // const handleOAuthLogin = (provider: "google" | "github") => {
+    //     window.location.href = `/api/auth/${provider}`;
+    // };
 
     const goHistory = () => {
         if (!presentationId) {
@@ -56,13 +56,13 @@ const Header: React.FC<HeaderProps> = ({
         navigate(`/history/${presentationId}`);
     };
 
-    const goEditor = () => {
-        if (!presentationId) {
-            alert("프레젠테이션 ID가 없어 에디터로 이동할 수 없어요.");
-            return;
-        }
-        navigate(`/editor/${presentationId}`);
-    };
+    // const goEditor = () => {
+    //     if (!presentationId) {
+    //         alert("프레젠테이션 ID가 없어 에디터로 이동할 수 없어요.");
+    //         return;
+    //     }
+    //     navigate(`/editor/${presentationId}`);
+    // };
 
     return (
         <header className={`header header-${variant}`}>
