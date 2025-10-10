@@ -74,9 +74,9 @@ const Canvas: React.FC<CanvasProps> = ({
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const backgroundRef = useRef<Konva.Rect>(null);
     const stageRef = useRef<Konva.Stage>(null);
-    const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+    const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevDataRef = useRef<{ shapes: Shape[]; texts: TextItem[] }>({shapes: [], texts: []});
-    const thumbnailTimeout = useRef<NodeJS.Timeout | null>(null);
+    const thumbnailTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const layerRef = useRef<Konva.Layer>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const focusRoot = () => rootRef.current?.focus();
