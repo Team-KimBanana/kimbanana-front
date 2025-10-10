@@ -57,7 +57,7 @@ const Header: React.FC<HeaderProps> = ({
             {(variant === "main" || variant === "workspace") && (
                 <div className="logo-container" onClick={() => navigate("/")}>
                     <img
-                        src="assets/headerIcon/KimbananaLogo.svg"
+                        src="/kimbanana/ui/assets/headerIcon/KimbananaLogo.svg"
                         alt="KimBanana Logo"
                         className="logo"
                         style={{ cursor: "pointer" }}
@@ -81,7 +81,7 @@ const Header: React.FC<HeaderProps> = ({
                                     }
                                 }}
                             >
-                                <img src="assets/headerIcon/restoreApply.svg" alt="restoreApply" />
+                                <img src="/kimbanana/ui/assets/headerIcon/restoreApply.svg" alt="restoreApply" />
                             </button>
                         )}
                     </div>
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({
                         onClick={isFullscreen ? onExitFullscreen : onEnterFullscreen}
                         title={isFullscreen ? "전체화면 종료" : "전체화면"}
                     >
-                        <img src="assets/headerIcon/fullscreen.svg" alt="fullscreen" />
+                        <img src="/kimbanana/ui/assets/headerIcon/fullscreen.svg" alt="fullscreen" />
                     </button>
 
                     <button
@@ -128,18 +128,18 @@ const Header: React.FC<HeaderProps> = ({
                         }}
                         title="히스토리"
                     >
-                        <img src="assets/headerIcon/history.svg" alt="History" />
+                        <img src="/kimbanana/ui/assets/headerIcon/history.svg" alt="History" />
                     </button>
 
                     <button className="header-btn save-btn" onClick={onSaveHistory}>
-                        <img src="assets/headerIcon/save.svg" alt="Save" />
+                        <img src="/kimbanana/ui/assets/headerIcon/save.svg" alt="Save" />
                     </button>
 
                     <button className="header-btn share-btn">
-                        <img src="assets/headerIcon/share.svg" alt="Share" />
+                        <img src="/kimbanana/ui/assets/headerIcon/share.svg" alt="Share" />
                     </button>
                     <button className="header-btn download-btn">
-                        <img src="assets/headerIcon/download.svg" alt="Download" />
+                        <img src="/kimbanana/ui/assets/headerIcon/download.svg" alt="Download" />
                     </button>
                 </div>
             )}
@@ -149,7 +149,7 @@ const Header: React.FC<HeaderProps> = ({
                     {isAuthenticated ? (
                         <div className="user-profile">
                             <img
-                                src={user?.profileImage || "assets/default-avatar.png"}
+                                src={user?.profileImage || "/kimbanana/ui/assets/default-avatar.png"}
                                 alt="Profile"
                                 className="profile-image"
                             />
