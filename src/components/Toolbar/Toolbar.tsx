@@ -15,6 +15,10 @@ interface ToolbarProps {
     setEraserSize?: (size: number) => void;
     eraserMode?: "size" | "area";
     setEraserMode?: (mode: "size" | "area") => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
 }
 
 const resizeImage = (file: File, maxWidth = 300): Promise<File> => {
@@ -62,6 +66,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              setEraserSize,
                                              eraserMode = "size",
                                              setEraserMode,
+                                             onUndo,
+                                             onRedo,
+                                             canUndo = false,
+                                             canRedo = false,
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isTextMenuOpen, setIsTextMenuOpen] = useState(false);
@@ -89,13 +97,13 @@ const Toolbar: React.FC<ToolbarProps> = ({
     }, []);
 
     const tools = [
-        { name: "cursor", icon: "/assets/toolIcon/cursor.svg" },
-        { name: "text", icon: "/assets/toolIcon/text.svg", isTextButton: true },
-        { name: "shapes", icon: "/assets/toolIcon/shapes.svg", isShapeButton: true },
-        { name: "color", icon: "/assets/toolIcon/color.svg", isColorButton: true },
-        { name: "pen", icon: "/assets/toolIcon/pen.svg" },
-        { name: "eraser", icon: "/assets/toolIcon/eraser.svg" },
-        { name: "image", icon: "/assets/toolIcon/image.svg" },
+        { name: "cursor", icon: "/kimbanana/ui/assets/toolIcon/cursor.svg" },
+        { name: "text", icon: "/kimbanana/ui/assets/toolIcon/text.svg", isTextButton: true },
+        { name: "shapes", icon: "/kimbanana/ui/assets/toolIcon/shapes.svg", isShapeButton: true },
+        { name: "color", icon: "/kimbanana/ui/assets/toolIcon/color.svg", isColorButton: true },
+        { name: "pen", icon: "/kimbanana/ui/assets/toolIcon/pen.svg" },
+        { name: "eraser", icon: "/kimbanana/ui/assets/toolIcon/eraser.svg" },
+        { name: "image", icon: "/kimbanana/ui/assets/toolIcon/image.svg" },
     ];
 
     return (
@@ -114,15 +122,15 @@ const Toolbar: React.FC<ToolbarProps> = ({
                             {isShapeMenuOpen && (
                                 <div className="shape-menu" ref={shapeMenuRef}>
                                     <button onClick={() => { setActiveTool("circle"); setIsShapeMenuOpen(false); }}>
-                                        <img src="/assets/toolIcon/circle.svg" alt="Circle" />
+                                        <img src="/kimbanana/ui/assets/toolIcon/circle.svg" alt="Circle" />
                                         <span>원</span>
                                     </button>
                                     <button onClick={() => { setActiveTool("rectangle"); setIsShapeMenuOpen(false); }}>
-                                        <img src="/assets/toolIcon/rectangle.svg" alt="Rectangle" />
+                                        <img src="/kimbanana/ui/assets/toolIcon/rectangle.svg" alt="Rectangle" />
                                         <span>사각형</span>
                                     </button>
                                     <button onClick={() => { setActiveTool("triangle"); setIsShapeMenuOpen(false); }}>
-                                        <img src="/assets/toolIcon/triangle.svg" alt="Triangle" />
+                                        <img src="/kimbanana/ui/assets/toolIcon/triangle.svg" alt="Triangle" />
                                         <span>삼각형</span>
                                     </button>
                                     <button onClick={() => { setActiveTool("star"); setIsShapeMenuOpen(false); }}>
@@ -313,11 +321,11 @@ const Toolbar: React.FC<ToolbarProps> = ({
             })}
 
             <div className="divider"></div>
-            <button className="toolbar-btn">
-                <img src="/assets/toolIcon/before.svg" alt="Undo" />
+            <button className="toolbar-btn" onClick={onUndo} disabled={!canUndo} title="이전">
+                <img src="/kimbanana/ui/assets/toolIcon/before.svg" alt="Undo" />
             </button>
-            <button className="toolbar-btn">
-                <img src="/assets/toolIcon/after.svg" alt="Redo" />
+            <button className="toolbar-btn" onClick={onRedo} disabled={!canRedo} title="이후">
+                <img src="/kimbanana/ui/assets/toolIcon/after.svg" alt="Redo" />
             </button>
         </div>
     );

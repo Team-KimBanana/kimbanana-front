@@ -46,10 +46,6 @@ const Header: React.FC<HeaderProps> = ({
         }
     };
 
-    const handleOAuthLogin = (provider: "google" | "github") => {
-        window.location.href = `/api/auth/${provider}`;
-    };
-
     const goHistory = () => {
         if (!presentationId) {
             alert("프레젠테이션 ID가 없어 히스토리로 이동할 수 없어요.");
@@ -58,20 +54,12 @@ const Header: React.FC<HeaderProps> = ({
         navigate(`/history/${presentationId}`);
     };
 
-    const goEditor = () => {
-        if (!presentationId) {
-            alert("프레젠테이션 ID가 없어 에디터로 이동할 수 없어요.");
-            return;
-        }
-        navigate(`/editor/${presentationId}`);
-    };
-
     return (
         <header className={`header header-${variant}`}>
             {(variant === "main" || variant === "workspace") && (
                 <div className="logo-container" onClick={() => navigate("/")}>
                     <img
-                        src="/assets/headerIcon/KimbananaLogo.svg"
+                        src="/kimbanana/ui/assets/headerIcon/KimbananaLogo.svg"
                         alt="KimBanana Logo"
                         className="logo"
                         style={{ cursor: "pointer" }}
@@ -95,7 +83,7 @@ const Header: React.FC<HeaderProps> = ({
                                     }
                                 }}
                             >
-                                <img src="/assets/headerIcon/restoreApply.svg" alt="restoreApply" />
+                                <img src="/kimbanana/ui/assets/headerIcon/restoreApply.svg" alt="restoreApply" />
                             </button>
                         )}
                     </div>
@@ -126,7 +114,7 @@ const Header: React.FC<HeaderProps> = ({
                         onClick={isFullscreen ? onExitFullscreen : onEnterFullscreen}
                         title={isFullscreen ? "전체화면 종료" : "전체화면"}
                     >
-                        <img src="/assets/headerIcon/fullscreen.svg" alt="fullscreen" />
+                        <img src="/kimbanana/ui/assets/headerIcon/fullscreen.svg" alt="fullscreen" />
                     </button>
 
                     <button
@@ -142,18 +130,18 @@ const Header: React.FC<HeaderProps> = ({
                         }}
                         title="히스토리"
                     >
-                        <img src="/assets/headerIcon/history.svg" alt="History" />
+                        <img src="/kimbanana/ui/assets/headerIcon/history.svg" alt="History" />
                     </button>
 
                     <button className="header-btn save-btn" onClick={onSaveHistory}>
-                        <img src="/assets/headerIcon/save.svg" alt="Save" />
+                        <img src="/kimbanana/ui/assets/headerIcon/save.svg" alt="Save" />
                     </button>
 
                     <button className="header-btn share-btn">
-                        <img src="/assets/headerIcon/share.svg" alt="Share" />
+                        <img src="/kimbanana/ui/assets/headerIcon/share.svg" alt="Share" />
                     </button>
                     <button className="header-btn download-btn">
-                        <img src="/assets/headerIcon/download.svg" alt="Download" />
+                        <img src="/kimbanana/ui/assets/headerIcon/download.svg" alt="Download" />
                     </button>
                 </div>
             )}
@@ -165,6 +153,11 @@ const Header: React.FC<HeaderProps> = ({
                             <div className="profile-avatar">
                                 {user?.name?.charAt(0).toUpperCase() || 'U'}
                             </div>
+                            <img
+                                src={user?.profileImage || "/kimbanana/ui/assets/default-avatar.png"}
+                                alt="Profile"
+                                className="profile-image"
+                            />
                             <div className="profile-dropdown">
                                 <span className="user-name">{user?.name}</span>
                                 <button onClick={handleLogout} className="logout-btn">

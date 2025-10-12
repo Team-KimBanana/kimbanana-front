@@ -280,6 +280,7 @@ const History: React.FC = () => {
                     <Canvas
                         activeTool="cursor"
                         selectedColor="#000000"
+                        setSelectedColor={() => {}}
                         setActiveTool={() => {}}
                         shapes={current?.shapes || []}
                         setShapes={() => {}}

@@ -8,7 +8,7 @@ import Workspace from "./pages/Workspace";
 const App = () => {
     return (
         <AuthProvider>
-            <BrowserRouter>
+            <BrowserRouter basename="/kimbanana/ui">
                 <Routes>
                     <Route path="/" element={<Workspace />} />
                     <Route path="/editor/:id" element={<MainLayout />} />

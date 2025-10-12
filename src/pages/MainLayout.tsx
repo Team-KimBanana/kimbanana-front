@@ -77,6 +77,8 @@ const MainLayout: React.FC = () => {
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
     const [presentationTitle, setPresentationTitle] = useState<string | undefined>(undefined);
+    const [undoStack, setUndoStack] = useState<SlideData[]>([]);
+    const [redoStack, setRedoStack] = useState<SlideData[]>([]);
     const lastUploadedHashRef = useRef<string>("");
     const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -708,33 +710,53 @@ const MainLayout: React.FC = () => {
     };
 
 
+    const pushHistory = (prevData: SlideData, nextData: SlideData) => {
+        setUndoStack((prev) => [...prev, prevData]);
+        setRedoStack([]);
+        setTimeout(() => broadcastFullSlideFromData({ [currentSlide]: nextData } as any), 0);
+    };
+
     const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
         setSlideData((prev) => {
             const updatedShapes = typeof newShapes === "function" ? newShapes(prev[currentSlide]?.shapes || []) : newShapes;
-            const newData = {
-                ...prev,
-                [currentSlide]: {
-                    ...prev[currentSlide],
-                    shapes: updatedShapes,
-                    texts: prev[currentSlide]?.texts || [],
-                },
-            };
-            setTimeout(() => broadcastFullSlideFromData(newData), 0);
-            return newData;
+            const before = prev[currentSlide] ?? { shapes: [], texts: [] };
+            const after: SlideData = { shapes: updatedShapes, texts: before.texts };
+            pushHistory(before, after);
+            return { ...prev, [currentSlide]: after };
         });
     };
 
     const updateTexts = (newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])) => {
         setSlideData((prev) => {
             const updatedTexts = typeof newTexts === "function" ? newTexts(prev[currentSlide]?.texts || []) : newTexts;
-            const newData = {
-                ...prev,
-                [currentSlide]: {
-                    ...prev[currentSlide],
-                    texts: updatedTexts,
-                    shapes: prev[currentSlide]?.shapes || [],
-                },
-            };
+            const before = prev[currentSlide] ?? { shapes: [], texts: [] };
+            const after: SlideData = { shapes: before.shapes, texts: updatedTexts };
+            pushHistory(before, after);
+            return { ...prev, [currentSlide]: after };
+        });
+    };
+
+    const handleUndo = () => {
+        if (!currentSlide || undoStack.length === 0) return;
+        setSlideData((prev) => {
+            const current = prev[currentSlide] ?? { shapes: [], texts: [] };
+            const last = undoStack[undoStack.length - 1];
+            setUndoStack((s) => s.slice(0, -1));
+            setRedoStack((r) => [...r, current]);
+            const newData = { ...prev, [currentSlide]: last };
+            setTimeout(() => broadcastFullSlideFromData(newData), 0);
+            return newData;
+        });
+    };
+
+    const handleRedo = () => {
+        if (!currentSlide || redoStack.length === 0) return;
+        setSlideData((prev) => {
+            const current = prev[currentSlide] ?? { shapes: [], texts: [] };
+            const next = redoStack[redoStack.length - 1];
+            setRedoStack((r) => r.slice(0, -1));
+            setUndoStack((s) => [...s, current]);
+            const newData = { ...prev, [currentSlide]: next };
             setTimeout(() => broadcastFullSlideFromData(newData), 0);
             return newData;
         });
@@ -949,6 +971,10 @@ const MainLayout: React.FC = () => {
                         setEraserSize={setEraserSize}
                         eraserMode={eraserMode}
                         setEraserMode={setEraserMode}
+                        onUndo={handleUndo}
+                        onRedo={handleRedo}
+                        canUndo={undoStack.length > 0}
+                        canRedo={redoStack.length > 0}
                     />
                 </div>
             </div>
