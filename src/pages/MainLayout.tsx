@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from "react";
+import React, {useState, useEffect, useRef, useCallback} from "react";
 import { useParams } from "react-router-dom";
 import ReactDOM from "react-dom/client";
 import {Client, StompSubscription} from "@stomp/stompjs";
@@ -14,12 +14,11 @@ import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
 
-// 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
-const API_BASE = import.meta.env.DEV 
-    ? '/api'  // 개발 환경: Vite 프록시 사용
+const API_BASE = import.meta.env.DEV
+    ? '/api'
     : import.meta.env.VITE_API_BASE_URL;
-const WS_URL = import.meta.env.DEV 
-    ? '/ws-api'  // 개발 환경: Vite 프록시 사용
+const WS_URL = import.meta.env.DEV
+    ? import.meta.env.VITE_WS_URL || 'wss://localhost:8080/ws'
     : import.meta.env.VITE_WS_URL;
 
 function dataURLtoBlob(dataURL: string) {
@@ -32,31 +31,34 @@ function dataURLtoBlob(dataURL: string) {
 }
 
 const MainLayout: React.FC = () => {
-    const { user } = useAuth();
-    
-    // 인증 헤더를 포함한 fetch 헬퍼 함수
-    const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-        const accessToken = localStorage.getItem('accessToken');
+    const { user, getAuthToken } = useAuth?.() ?? ({
+        user: null,
+        getAuthToken: () => Promise.resolve(null)
+    } as never);
+
+    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        const accessToken = await getAuthToken();
         const headers: Record<string, string> = {
             ...options.headers as Record<string, string>,
         };
-        
+
         if (accessToken) {
             headers['Authorization'] = `Bearer ${accessToken}`;
         }
-        
-        console.log('🔐 fetchWithAuth 호출:', {
+
+        console.log('fetchWithAuth 호출:', {
             url,
             hasToken: !!accessToken,
             tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : 'none',
             headers
         });
-        
+
         return fetch(url, {
             ...options,
             headers,
         });
-    };
+    }, [getAuthToken]);
+
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
@@ -140,61 +142,14 @@ const MainLayout: React.FC = () => {
         form.append("file", blob, `thumb_${presentationId}.png`);
         form.append("presentationId", presentationId);
 
-        const accessToken = localStorage.getItem('accessToken');
-        const headers: Record<string, string> = {};
-        if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
         const url = `${API_BASE}/images/thumbnails/presentation`;
-        const res = await fetch(url, { 
-            method: "POST", 
-            headers,
-            body: form 
+        const res = await fetchWithAuth(url, {
+            method: "POST",
+            body: form
         });
 
         if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
     }
-
-
-
-    useEffect(() => {
-        // WebSocket 연결과 별개로 슬라이드 먼저 로드
-        fetchSlides();
-        
-        const client = new Client({
-            brokerURL: WS_URL,
-            reconnectDelay: 5000,
-        });
-
-        client.onConnect = () => {
-            console.log("웹소켓 연결됨");
-            subscribeToStructure(client);
-        };
-
-        client.onStompError = (frame) => {
-            console.error("WebSocket STOMP 에러:", frame);
-        };
-
-        client.onWebSocketError = (event) => {
-            console.error("WebSocket 연결 에러:", event);
-        };
-
-        try {
-            client.activate();
-            stompClientRef.current = client;
-        } catch (err) {
-            console.error("WebSocket 활성화 실패:", err);
-        }
-
-        return () => {
-            try {
-                client.deactivate();
-            } catch (err) {
-                console.error("WebSocket 비활성화 실패:", err);
-            }
-        };
-    }, []);
 
 
     const fetchSlides = async () => {
@@ -206,8 +161,8 @@ const MainLayout: React.FC = () => {
             }
 
             const json = await res.json();
-            console.log("📊 슬라이드 API 응답:", json);
-            
+            console.log("슬라이드 API 응답:", json);
+
             const serverTitle =
                 json?.presentation?.presentation_title ??
                 json?.presentation_title ??
@@ -216,7 +171,7 @@ const MainLayout: React.FC = () => {
             setPresentationTitle(serverTitle);
 
             const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
-            console.log("📊 슬라이드 목록:", slideList);
+            console.log("슬라이드 목록:", slideList);
 
             if (slideList.length === 0) {
                 const res2 = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
@@ -243,8 +198,8 @@ const MainLayout: React.FC = () => {
 
             const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s): Promise<[string, SlideData]> => {
                 let d: unknown = s.data;
-                
-                console.log(`📊 슬라이드 ${s.slide_id} 데이터:`, {
+
+                console.log(`슬라이드 ${s.slide_id} 데이터:`, {
                     hasData: !!d,
                     dataType: typeof d,
                     data: d
@@ -276,7 +231,7 @@ const MainLayout: React.FC = () => {
                     texts  = Array.isArray(obj.texts)  ? obj.texts  : [];
                 }
 
-                console.log(`📊 슬라이드 ${s.slide_id} 파싱 결과:`, {
+                console.log(`슬라이드 ${s.slide_id} 파싱 결과:`, {
                     shapesCount: shapes.length,
                     textsCount: texts.length
                 });
@@ -287,8 +242,8 @@ const MainLayout: React.FC = () => {
             const dataEntries: [string, SlideData][] = await Promise.all(dataPromises);
 
             const newSlideData: Record<string, SlideData> = Object.fromEntries(dataEntries);
-            
-            console.log("📊 최종 슬라이드 데이터:", {
+
+            console.log("최종 슬라이드 데이터:", {
                 slidesCount: orders.length,
                 slideIds: orders.map(o => o.id),
                 slideData: newSlideData
@@ -306,6 +261,125 @@ const MainLayout: React.FC = () => {
         }
     };
 
+
+    useEffect(() => {
+        fetchSlides();
+
+        getAuthToken().then((token) => {
+
+            const client = new Client({
+                brokerURL: WS_URL,
+                reconnectDelay: 5000,
+
+                connectHeaders: token ? {
+                    'Authorization': `Bearer ${token}`,
+                } : {},
+            });
+
+            client.onConnect = () => {
+                console.log("웹소켓 연결됨");
+                subscribeToStructure(client);
+            };
+
+            client.onStompError = (frame) => {
+                console.error("WebSocket STOMP 에러:", frame);
+            };
+
+            client.onWebSocketError = (event) => {
+                console.error("WebSocket 연결 에러:", event);
+            };
+
+            try {
+                client.activate();
+                stompClientRef.current = client;
+            } catch (err) {
+                console.error("WebSocket 활성화 실패:", err);
+            }
+        });
+
+        return () => {
+            try {
+                stompClientRef.current?.deactivate();
+            } catch (err) {
+                console.error("WebSocket 비활성화 실패:", err);
+            }
+        };
+    }, [getAuthToken]);
+
+
+    const subscribeToStructure = (client: Client) => {
+        const topic = `/topic/presentation.${presentationId}`;
+        console.log("구조 구독 시작:", topic);
+
+        client.subscribe(topic, (message) => {
+            const parsed = JSON.parse(message.body);
+            console.log("구조 수신 메시지:", parsed);
+
+            const { type, payload } = parsed;
+
+            if (type === "SLIDE_ADD") {
+                const { slide_id, order } = payload;
+
+                setSlides(prev => {
+                    const updated = [...prev, { id: slide_id, order }];
+                    return updated.sort((a, b) => a.order - b.order);
+                });
+
+                setSlideData(prev => ({
+                    ...prev,
+                    [slide_id]: { shapes: [], texts: [] },
+                }));
+
+            } else if (type === "STRUCTURE_UPDATED" || type === "SLIDE_DELETE") {
+                const slideList = payload.slides || [];
+
+                const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
+                const orders: { id: string; order: number }[] = [];
+
+                slideList.forEach((slide: {
+                    slide_id: string;
+                    order: number;
+                    data?: { shapes?: Shape[]; texts?: TextItem[] };
+                }) => {
+                    const id = slide.slide_id;
+
+                    newSlideData[id] = {
+                        shapes: slide.data?.shapes || [],
+                        texts: slide.data?.texts || [],
+                    };
+
+                    orders.push({ id, order: slide.order ?? 9999 });
+                });
+
+                orders.sort((a, b) => a.order - b.order);
+
+                setSlides(orders);
+
+                setSlideData(prev => {
+                    const newData = { ...prev };
+                    slideList.forEach((slide: ReceivedSlide) => {
+                        const id = slide.slide_id;
+                        if (!newData[id]) {
+                            newData[id] = { shapes: [], texts: [] };
+                        }
+                    });
+                    return newData;
+                });
+
+                if (slideList.length > 0 && (!currentSlide || currentSlide === "")) {
+                    setCurrentSlide(slideList[0].slide_id);
+                }
+            } else if (type === "TITLE_UPDATED" || type === "TITLE_UPDATE") {
+                const newTitle = payload?.new_title;
+                if (!payload?.presentation_id || payload.presentation_id === presentationId) {
+                    setPresentationTitle(newTitle ?? undefined);
+                    if (newTitle) document.title = `${newTitle} - Kimbanana`;
+                }
+            } else {
+                console.warn("알 수 없는 구조 메시지 type:", type);
+            }
+        });
+    };
 
     useEffect(() => {
         if (!stompClientRef.current || !currentSlide) return;
@@ -456,85 +530,6 @@ const MainLayout: React.FC = () => {
         }, 300);
     };
 
-
-
-
-    const subscribeToStructure = (client: Client) => {
-        const topic = `/topic/presentation.${presentationId}`;
-        console.log("구조 구독 시작:", topic);
-
-        client.subscribe(topic, (message) => {
-            const parsed = JSON.parse(message.body);
-            console.log("구조 수신 메시지:", parsed);
-
-            const { type, payload } = parsed;
-
-            if (type === "SLIDE_ADD") {
-                const { slide_id, order } = payload;
-
-                setSlides(prev => {
-                    const updated = [...prev, { id: slide_id, order }];
-                    return updated.sort((a, b) => a.order - b.order);
-                });
-
-                setSlideData(prev => ({
-                    ...prev,
-                    [slide_id]: { shapes: [], texts: [] },
-                }));
-
-            } else if (type === "STRUCTURE_UPDATED" || type === "SLIDE_DELETE") {
-                const slideList = payload.slides || [];
-
-                const newSlideData: { [key: string]: { shapes: Shape[]; texts: TextItem[] } } = {};
-                const orders: { id: string; order: number }[] = [];
-
-                slideList.forEach((slide: {
-                    slide_id: string;
-                    order: number;
-                    data?: { shapes?: Shape[]; texts?: TextItem[] };
-                }) => {
-                    const id = slide.slide_id;
-
-                    newSlideData[id] = {
-                        shapes: slide.data?.shapes || [],
-                        texts: slide.data?.texts || [],
-                    };
-
-                    orders.push({ id, order: slide.order ?? 9999 });
-                });
-
-                orders.sort((a, b) => a.order - b.order);
-
-                setSlides(orders);
-
-                setSlideData(prev => {
-                    const newData = { ...prev };
-                    slideList.forEach((slide: ReceivedSlide) => {
-                        const id = slide.slide_id;
-                        if (!newData[id]) {
-                            newData[id] = { shapes: [], texts: [] };
-                        }
-                    });
-                    return newData;
-                });
-
-                if (slideList.length > 0 && (!currentSlide || currentSlide === "")) {
-                    setCurrentSlide(slideList[0].slide_id);
-                }
-            } else if (type === "TITLE_UPDATED" || type === "TITLE_UPDATE") {
-                const newTitle = payload?.new_title;
-                if (!payload?.presentation_id || payload.presentation_id === presentationId) {
-                    setPresentationTitle(newTitle ?? undefined);
-                    if (newTitle) document.title = `${newTitle} - Kimbanana`;
-                }
-            } else {
-                console.warn("알 수 없는 구조 메시지 type:", type);
-            }
-        });
-    };
-
-
-
     const handleAddSlide = async () => {
         try {
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
@@ -543,11 +538,11 @@ const MainLayout: React.FC = () => {
                     'Accept': 'application/json',
                 },
             });
-            
+
             if (!res.ok) {
                 throw new Error(`HTTP error! status: ${res.status}`);
             }
-            
+
             const json = await res.json();
 
             const newId = json.slide_id;
@@ -713,7 +708,7 @@ const MainLayout: React.FC = () => {
     const pushHistory = (prevData: SlideData, nextData: SlideData) => {
         setUndoStack((prev) => [...prev, prevData]);
         setRedoStack([]);
-        setTimeout(() => broadcastFullSlideFromData({ [currentSlide]: nextData } as any), 0);
+        setTimeout(() => broadcastFullSlideFromData({ [currentSlide]: nextData } as never), 0);
     };
 
     const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
@@ -873,9 +868,7 @@ const MainLayout: React.FC = () => {
                 let detail: string = "";
                 try {
                     detail = await res.text();
-                } catch {
-                    // ignore error
-                }
+                } catch { /* empty */ }
                 console.error("히스토리 저장 실패:", res.status, detail);
                 alert(`히스토리 저장 실패 (${res.status})`);
                 return false;

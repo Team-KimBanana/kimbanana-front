@@ -16,16 +16,27 @@ export type HistorySlideApi = {
     data?: unknown;
 };
 
-export async function fetchHistoryList(presentationId: string): Promise<HistoryListItem[]> {
+export async function fetchHistoryList(presentationId: string, token: string | null): Promise<HistoryListItem[]> {
     const urls = [
         `${BASE}/presentations/${presentationId}/histories`,
         `${BASE}/presentation/${presentationId}/histories`,
     ];
 
+    const headers: Record<string, string> = {
+        'Accept': 'application/json',
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
     let res: Response | null = null;
     for (const u of urls) {
-        res = await fetch(u, { mode: "cors", credentials: "omit", headers: { Accept: "application/json" } });
+        res = await fetch(u, { mode: "cors", credentials: "omit", headers });
         if (res.ok) break;
+    }
+
+    if (res && res.status === 403) {
+        throw new Error("인증 실패 (403 Forbidden). 유효한 토큰이 필요합니다.");
     }
     if (!res || !res.ok) throw new Error("Failed to load histories");
 
@@ -40,18 +51,27 @@ export async function fetchHistoryList(presentationId: string): Promise<HistoryL
 }
 
 export async function fetchHistorySlides(
-    presentationId: string,
-    historyId: string
-): Promise<HistorySlideApi[]> {
+    presentationId: string, historyId: string, token: string | null): Promise<HistorySlideApi[]> {
     const urls = [
         `${BASE}/presentations/${presentationId}/histories/${historyId}`,
         `${BASE}/presentation/${presentationId}/histories/${historyId}`,
     ];
 
+    const headers: Record<string, string> = {
+        'Accept': 'application/json',
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
     let res: Response | null = null;
     for (const u of urls) {
-        res = await fetch(u, { mode: "cors", credentials: "omit", headers: { Accept: "application/json" } });
+        res = await fetch(u, { mode: "cors", credentials: "omit", headers });
         if (res.ok) break;
+    }
+
+    if (res && res.status === 403) {
+        throw new Error("인증 실패 (403 Forbidden). 히스토리 상세 정보를 불러올 권한이 없습니다.");
     }
     if (!res || !res.ok) throw new Error("Failed to load history detail");
 

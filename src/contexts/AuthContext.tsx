@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo, AuthError } from '../types/types';
+import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo } from '../types/types';
 
 interface AuthContextType extends AuthState {
     login: (credentials: SignInRequest) => Promise<{ success: boolean; error?: string }>;
     register: (credentials: SignUpRequest) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
     clearError: () => void;
+    getAuthToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -77,20 +78,32 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(authReducer, initialState);
     const refreshRetryCount = React.useRef(0);
-    
-    // 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
-    const API_BASE_URL = import.meta.env.DEV 
-        ? '/api'  // 개발 환경: Vite 프록시 사용
+
+    const API_BASE_URL = import.meta.env.DEV
+        ? '/api'
         : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
-    useEffect(() => {
-        // 페이지 로드 시 localStorage에서 토큰 확인
+    const getAuthToken = useCallback(async (): Promise<string | null> => {
         const accessToken = localStorage.getItem('accessToken');
         if (accessToken) {
-            // 토큰이 있으면 사용자 정보 로드
+            return accessToken;
+        }
+
+        const success = await attemptTokenRefresh(true);
+        if (success) {
+            return localStorage.getItem('accessToken');
+        }
+
+        return null;
+    }, []);
+
+    useEffect(() => {
+        const accessToken = localStorage.getItem('accessToken');
+        if (accessToken) {
+
             loadUser(accessToken);
         }
-    }, []);
+    }, [getAuthToken]);
 
     const loadUser = async (token: string) => {
         try {
@@ -100,7 +113,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     'Accept': 'application/json',
                 },
             });
-            
+
             if (response.ok) {
                 const userInfo: UserInfo = await response.json();
                 const user: User = {
@@ -112,8 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 };
                 dispatch({ type: 'LOAD_USER', payload: user });
             } else {
-                // 토큰이 유효하지 않으면 리프레시 시도
-                await attemptTokenRefresh();
+                await attemptTokenRefresh(false);
             }
         } catch (error) {
             console.error('사용자 정보 로드 실패:', error);
@@ -121,11 +133,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const attemptTokenRefresh = async () => {
+    const attemptTokenRefresh = async (isSilent: boolean): Promise<boolean> => {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
             clearTokens();
-            return;
+            return false;
         }
 
         try {
@@ -141,13 +153,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const data: AuthResponse = await response.json();
                 localStorage.setItem('accessToken', data.accessToken);
                 localStorage.setItem('refreshToken', data.refreshToken);
-                await loadUser(data.accessToken);
+                if (!isSilent) {
+                    await loadUser(data.accessToken);
+                }
+                return true;
             } else {
                 clearTokens();
+                return false;
             }
         } catch (error) {
             console.error('토큰 재발급 실패:', error);
             clearTokens();
+            return false;
         }
     };
 
@@ -159,7 +176,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const login = async (credentials: SignInRequest): Promise<{ success: boolean; error?: string }> => {
         dispatch({ type: 'LOGIN_START' });
-        
+
         try {
             console.log('🔐 로그인 시도:', {
                 url: `${API_BASE_URL}/auth/sign-in`,
@@ -186,15 +203,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const data: AuthResponse = await response.json();
                 localStorage.setItem('accessToken', data.accessToken);
                 localStorage.setItem('refreshToken', data.refreshToken);
-                // 로그인 성공 시 재시도 카운터 리셋
                 refreshRetryCount.current = 0;
-                
-                // 사용자 정보 로드 시도
+
                 try {
                     await loadUser(data.accessToken);
                 } catch (error) {
                     console.warn('프로필 조회 실패, 임시 사용자 정보 생성');
-                    // 프로필 API가 실패하면 임시 사용자 정보 생성
                     const tempUser: User = {
                         id: 'temp_user_' + Date.now(),
                         email: credentials.email,
@@ -204,10 +218,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     };
                     dispatch({ type: 'LOAD_USER', payload: tempUser });
                 }
-                
+
                 return { success: true };
             } else {
-                // 응답 본문도 확인
                 let responseText = '';
                 try {
                     responseText = await response.text();
@@ -217,13 +230,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 let errorMessage = '로그인에 실패했습니다.';
-                
+
                 if (response.status === 400) {
                     errorMessage = '이메일 또는 비밀번호를 확인해주세요.';
                 } else if (response.status === 401) {
                     errorMessage = '이메일 또는 비밀번호가 올바르지 않습니다.';
                 }
-                
+
                 dispatch({ type: 'LOGIN_FAILURE', payload: errorMessage });
                 return { success: false, error: errorMessage };
             }
@@ -236,7 +249,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const register = async (credentials: SignUpRequest): Promise<{ success: boolean; error?: string }> => {
         dispatch({ type: 'REGISTER_START' });
-        
+
         try {
             console.log('📝 회원가입 시도:', {
                 url: `${API_BASE_URL}/auth/sign-up`,
@@ -265,7 +278,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const loginResult = await login({ email: credentials.email, password: credentials.password });
                 return loginResult;
             } else {
-                // 응답 본문도 확인
                 let responseText = '';
                 try {
                     responseText = await response.text();
@@ -275,13 +287,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 let errorMessage = '회원가입에 실패했습니다.';
-                
+
                 if (response.status === 400) {
                     errorMessage = '입력 정보를 확인해주세요. (이메일 형식, 이름 3자 이상, 비밀번호 6자 이상 영문+숫자)';
                 } else if (response.status === 409) {
                     errorMessage = '이미 가입된 이메일입니다.';
                 }
-                
+
                 dispatch({ type: 'REGISTER_FAILURE', payload: errorMessage });
                 return { success: false, error: errorMessage };
             }
@@ -294,7 +306,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async (): Promise<void> => {
-        // API 호출 없이 클라이언트에서만 토큰 삭제
         clearTokens();
     };
 
@@ -308,6 +319,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         logout,
         clearError,
+        getAuthToken,
     };
 
     return (
@@ -323,4 +335,4 @@ export const useAuth = (): AuthContextType => {
         throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
-}; 
+};

@@ -1,9 +1,38 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 
-export default defineConfig({
-    base: '/kimbanana/ui/',
-    server: {
-        host: '0.0.0.0'
-    },
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), '');
+
+    const targetUrl = env.VITE_PROXY_TARGET || 'http://localhost:8080/default';
+
+    return {
+        base: '/kimbanana/ui/',
+        server: {
+            host: '0.0.0.0',
+            proxy: {
+                '/api': {
+                    target: targetUrl,
+                    changeOrigin: true,
+                    secure: true,
+                    configure: (proxy, _options) => {
+                        proxy.on('error', (err, _req, _res) => {
+                            console.log('proxy error', err);
+                        });
+                        proxy.on('proxyReq', (proxyReq, req, _res) => {
+                            console.log('Sending Request to the Target:', req.method, req.url);
+                        });
+                        proxy.on('proxyRes', (proxyRes, req, _res) => {
+                            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+                        });
+                    },
+                },
+                '/ws-api': {
+                    target: targetUrl.replace('https:', 'wss:'),
+                    changeOrigin: true,
+                    secure: true,
+                    ws: true,
+                }
+            }
+        },
+    }
 });
-

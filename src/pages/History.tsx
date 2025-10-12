@@ -33,10 +33,12 @@ const toSlideData = (raw: unknown): SlideData => {
     if (typeof d === "string") {
         try { d = JSON.parse(d); } catch { d = {}; }
     }
-    const obj = d && typeof d === "object" ? (d as any) : {};
+    const obj: unknown = d && typeof d === "object" ? d : {};
+    const slideObj = obj as { shapes?: unknown, texts?: unknown };
+
     return {
-        shapes: Array.isArray(obj.shapes) ? obj.shapes : [],
-        texts: Array.isArray(obj.texts) ? obj.texts : [],
+        shapes: Array.isArray(slideObj.shapes) ? slideObj.shapes as Shape[] : [],
+        texts: Array.isArray(slideObj.texts) ? slideObj.texts as TextItem[] : [],
     };
 };
 
@@ -46,7 +48,12 @@ const cloneSlideData = (s: SlideData) =>
 const History: React.FC = () => {
     const navigate = useNavigate();
     const { presentationId } = useParams();
-    const { user } = useAuth?.() ?? ({ user: null } as never);
+
+    const { user, getAuthToken } = useAuth?.() ?? ({
+        user: null,
+        getAuthToken: () => Promise.resolve(null)
+    } as never);
+
     const userId = user?.name || user?.id || "anonymous";
 
     const [currentSlidesOrder, setCurrentSlidesOrder] = useState<SlideOrder[]>([]);
@@ -76,14 +83,30 @@ const History: React.FC = () => {
     );
     const current = shownSlideId ? slideDataMap[shownSlideId] : undefined;
 
+    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        const token = await getAuthToken();
+        const headers = {
+            ...options.headers,
+            Accept: "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+        };
+        return fetch(url, {
+            ...options,
+            mode: "cors",
+            credentials: "omit",
+            headers,
+        });
+    }, [getAuthToken]);
+
     useEffect(() => {
-        if (!presentationId) return;
+        if (!presentationId || !getAuthToken) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
-                    mode: "cors", credentials: "omit", headers: { Accept: "application/json" },
-                });
-                if (!res.ok) return;
+                const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
+                if (!res.ok) {
+                    console.error("슬라이드 목록 로드 실패:", res.status);
+                    return;
+                }
 
                 const json = await res.json();
                 const slideList: { slide_id: string; order: number; data?: unknown }[] =
@@ -97,9 +120,7 @@ const History: React.FC = () => {
                 const entries = await Promise.all(slideList.map(async s => {
                     let d: unknown = s.data;
                     if (d === undefined) {
-                        const dRes = await fetch(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`, {
-                            mode: "cors", credentials: "omit", headers: { Accept: "application/json" },
-                        });
+                        const dRes = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
                         d = dRes.ok ? (await dRes.json())?.data : undefined;
                     }
                     return [s.slide_id, toSlideData(d)] as [string, SlideData];
@@ -112,23 +133,30 @@ const History: React.FC = () => {
                 console.error("현재 슬라이드 불러오기 오류:", e);
             }
         })();
-    }, [presentationId]);
+    }, [presentationId, getAuthToken, fetchWithAuth]);
 
     useEffect(() => {
-        if (!presentationId) return;
+        if (!presentationId || !getAuthToken) return;
         (async () => {
-            const list = await fetchHistoryList(presentationId);
-            setHistories(
-                list.map(it => {
-                    const f = toKoreanDate(it.lastRevisionISO);
-                    return { historyId: `${it.historyId}__${it.lastRevisionISO}`, displayDateOnly: f.dateOnly, displayDateTime: f.dateTime };
-                })
-            );
+            try {
+                const token = await getAuthToken();
+                // fetchHistoryList 함수가 토큰 인수를 받도록 수정되었다고 가정
+                const list = await fetchHistoryList(presentationId, token);
+
+                setHistories(
+                    list.map(it => {
+                        const f = toKoreanDate(it.lastRevisionISO);
+                        return { historyId: `${it.historyId}__${it.lastRevisionISO}`, displayDateOnly: f.dateOnly, displayDateTime: f.dateTime };
+                    })
+                );
+            } catch (e) {
+                console.error("히스토리 목록 로드 실패:", e);
+            }
         })();
-    }, [presentationId]);
+    }, [presentationId, getAuthToken]);
 
     useEffect(() => {
-        if (!presentationId || !selectedHistoryUid) {
+        if (!presentationId || !selectedHistoryUid || !getAuthToken) {
             setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
             setPendingMappings([]);   restoreIdToHistoryId.current = {};
             return;
@@ -136,13 +164,13 @@ const History: React.FC = () => {
 
         (async () => {
             try {
-                const raw = await fetchHistorySlides(presentationId, baseHistoryId(selectedHistoryUid));
+                const token = await getAuthToken();
+                const raw = await fetchHistorySlides(presentationId, baseHistoryId(selectedHistoryUid), token);
                 if (raw.length === 0) {
                     setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
                     return;
                 }
 
-                // restore id ↔ history id 테이블 구성
                 restoreIdToHistoryId.current = {};
                 const orders: SlideOrder[] = raw
                     .map(s => {
@@ -167,7 +195,7 @@ const History: React.FC = () => {
                 setRestoreSlidesOrder([]); setSelectedRestoreSlide(null);
             }
         })();
-    }, [presentationId, selectedHistoryUid]);
+    }, [presentationId, selectedHistoryUid, getAuthToken]);
 
     const handleThumbnailRendered = useCallback((slideId: string, dataUrl: string) => {
         setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
@@ -191,9 +219,9 @@ const History: React.FC = () => {
     const handleApplyRestore = useCallback(async () => {
         if (!presentationId || !selectedHistoryUid) return;
         try {
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/restorations`, {
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/restorations`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     type: "partial",
                     history_id: baseHistoryId(selectedHistoryUid),
@@ -210,16 +238,16 @@ const History: React.FC = () => {
         } catch (e) {
             console.error(e); alert("복원 적용 중 오류가 발생했습니다.");
         }
-    }, [presentationId, selectedHistoryUid, pendingMappings, userId]);
+    }, [presentationId, selectedHistoryUid, pendingMappings, userId, navigate, fetchWithAuth]);
 
     const handleRestoreAllSlides = useCallback(async () => {
         if (!presentationId || !selectedHistoryUid) return;
         if (!window.confirm("선택한 히스토리의 전체 슬라이드를 현재 프레젠테이션에 복원할까요?")) return;
 
         try {
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/restorations`, {
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/restorations`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     type: "all",
                     history_id: baseHistoryId(selectedHistoryUid),
@@ -236,7 +264,7 @@ const History: React.FC = () => {
             console.error("히스토리 복원 중 오류:", e);
             alert("히스토리 복원 중 오류가 발생했습니다.");
         }
-    }, [presentationId, selectedHistoryUid, userId, navigate]);
+    }, [presentationId, selectedHistoryUid, userId, navigate, fetchWithAuth]);
 
     return (
         <div className="history">

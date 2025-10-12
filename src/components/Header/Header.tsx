@@ -153,11 +153,6 @@ const Header: React.FC<HeaderProps> = ({
                             <div className="profile-avatar">
                                 {user?.name?.charAt(0).toUpperCase() || 'U'}
                             </div>
-                            <img
-                                src={user?.profileImage || "/kimbanana/ui/assets/default-avatar.png"}
-                                alt="Profile"
-                                className="profile-image"
-                            />
                             <div className="profile-dropdown">
                                 <span className="user-name">{user?.name}</span>
                                 <button onClick={handleLogout} className="logout-btn">
