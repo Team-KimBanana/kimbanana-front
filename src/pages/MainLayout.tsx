@@ -46,12 +46,12 @@ const MainLayout: React.FC = () => {
             headers['Authorization'] = `Bearer ${accessToken}`;
         }
 
-        console.log('fetchWithAuth 호출:', {
-            url,
-            hasToken: !!accessToken,
-            tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : 'none',
-            headers
-        });
+        // console.log('fetchWithAuth 호출:', {
+        //     url,
+        //     hasToken: !!accessToken,
+        //     tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : 'none',
+        //     headers
+        // });
 
         return fetch(url, {
             ...options,
@@ -161,7 +161,7 @@ const MainLayout: React.FC = () => {
             }
 
             const json = await res.json();
-            console.log("슬라이드 API 응답:", json);
+            // console.log("슬라이드 API 응답:", json);
 
             const serverTitle =
                 json?.presentation?.presentation_title ??
@@ -171,7 +171,7 @@ const MainLayout: React.FC = () => {
             setPresentationTitle(serverTitle);
 
             const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
-            console.log("슬라이드 목록:", slideList);
+            // console.log("슬라이드 목록:", slideList);
 
             if (slideList.length === 0) {
                 const res2 = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
@@ -199,11 +199,11 @@ const MainLayout: React.FC = () => {
             const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s): Promise<[string, SlideData]> => {
                 let d: unknown = s.data;
 
-                console.log(`슬라이드 ${s.slide_id} 데이터:`, {
-                    hasData: !!d,
-                    dataType: typeof d,
-                    data: d
-                });
+                // console.log(`슬라이드 ${s.slide_id} 데이터:`, {
+                //     hasData: !!d,
+                //     dataType: typeof d,
+                //     data: d
+                // });
 
                 if (d === undefined || d === null) {
                     const detail = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
@@ -231,10 +231,10 @@ const MainLayout: React.FC = () => {
                     texts  = Array.isArray(obj.texts)  ? obj.texts  : [];
                 }
 
-                console.log(`슬라이드 ${s.slide_id} 파싱 결과:`, {
-                    shapesCount: shapes.length,
-                    textsCount: texts.length
-                });
+                // console.log(`슬라이드 ${s.slide_id} 파싱 결과:`, {
+                //     shapesCount: shapes.length,
+                //     textsCount: texts.length
+                // });
 
                 return [s.slide_id, { shapes, texts }];
             });
@@ -243,11 +243,11 @@ const MainLayout: React.FC = () => {
 
             const newSlideData: Record<string, SlideData> = Object.fromEntries(dataEntries);
 
-            console.log("최종 슬라이드 데이터:", {
-                slidesCount: orders.length,
-                slideIds: orders.map(o => o.id),
-                slideData: newSlideData
-            });
+            // console.log("최종 슬라이드 데이터:", {
+            //     slidesCount: orders.length,
+            //     slideIds: orders.map(o => o.id),
+            //     slideData: newSlideData
+            // });
 
             setSlides(orders);
             setSlideData(newSlideData);
@@ -263,11 +263,12 @@ const MainLayout: React.FC = () => {
 
 
     useEffect(() => {
-        fetchSlides();
+        let client: Client | null = null;
+        let cleanupDeactivate = () => {};
 
         getAuthToken().then((token) => {
 
-            const client = new Client({
+            client = new Client({
                 brokerURL: WS_URL,
                 reconnectDelay: 5000,
 
@@ -277,8 +278,10 @@ const MainLayout: React.FC = () => {
             });
 
             client.onConnect = () => {
-                console.log("웹소켓 연결됨");
-                subscribeToStructure(client);
+                // console.log("웹소켓 연결됨");
+                subscribeToStructure(client as Client);
+
+                fetchSlides();
             };
 
             client.onStompError = (frame) => {
@@ -292,24 +295,29 @@ const MainLayout: React.FC = () => {
             try {
                 client.activate();
                 stompClientRef.current = client;
+
+                cleanupDeactivate = () => {
+                    try {
+                        client?.deactivate();
+                    } catch (err) {
+                        console.error("WebSocket 비활성화 실패:", err);
+                    }
+                };
+
             } catch (err) {
                 console.error("WebSocket 활성화 실패:", err);
             }
         });
 
         return () => {
-            try {
-                stompClientRef.current?.deactivate();
-            } catch (err) {
-                console.error("WebSocket 비활성화 실패:", err);
-            }
+            cleanupDeactivate();
         };
     }, [getAuthToken]);
 
 
     const subscribeToStructure = (client: Client) => {
         const topic = `/topic/presentation.${presentationId}`;
-        console.log("구조 구독 시작:", topic);
+        // console.log("구조 구독 시작:", topic);
 
         client.subscribe(topic, (message) => {
             const parsed = JSON.parse(message.body);
@@ -387,14 +395,14 @@ const MainLayout: React.FC = () => {
         subscriptionRef.current?.unsubscribe();
 
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
-        console.log("슬라이드 구독 시작:", topic);
+        // console.log("슬라이드 구독 시작:", topic);
 
         try {
             subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
 
                 try {
                     const parsed = JSON.parse(message.body);
-                    console.log("슬라이드 수신 메시지:", parsed);
+                    // console.log("슬라이드 수신 메시지:", parsed);
 
                     const data = typeof parsed.data === "string"
                         ? JSON.parse(parsed.data)
@@ -514,8 +522,8 @@ const MainLayout: React.FC = () => {
 
         debounceTimerRef.current = setTimeout(() => {
             const destination = `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`;
-            console.log("WebSocket 데이터 전송 대상:", destination);
-            console.log("WebSocket 데이터 전송:", payload);
+            // console.log("WebSocket 데이터 전송 대상:", destination);
+            // console.log("WebSocket 데이터 전송:", payload);
 
             try {
                 stompClientRef.current?.publish({
