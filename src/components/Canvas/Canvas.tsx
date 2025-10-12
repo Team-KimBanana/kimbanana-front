@@ -362,19 +362,6 @@ const Canvas: React.FC<CanvasProps> = ({
         }
     };
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Backspace" || event.key === "Delete") {
-                if (document.activeElement?.tagName === "TEXTAREA") return;
-
-                deleteShape();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedShapeId, selectedTextId]);
-
 
     const isDraggableShape = (id: number) => {
         return activeTool === "cursor" && selectedShapeId === id;
@@ -396,6 +383,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
 
     const {width: displayWidth, height: displayHeight, scale} = getDisplayDimensions({ isFullscreen, isHistoryPage });
+
 
 
     return (

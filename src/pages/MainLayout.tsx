@@ -73,6 +73,7 @@ const MainLayout: React.FC = () => {
     const subscriptionRef = useRef<StompSubscription | null>(null);
     const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
+    const [clipboardData, setClipboardData] = useState<{ shapes: Shape[]; texts: TextItem[] } | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastBroadcastData = useRef<string>("");
     const containerRef = useRef<HTMLDivElement>(null);
@@ -646,44 +647,6 @@ const MainLayout: React.FC = () => {
     };
 
 
-    useEffect(() => {
-        const onKeyDown = (e: KeyboardEvent) => {
-            const ae = document.activeElement as HTMLElement | null;
-            const isTypingInForm =
-                !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
-            if (isTypingInForm) return;
-
-            const isBackspaceOrDelete = e.key === "Backspace" || e.key === "Delete";
-            if (!isBackspaceOrDelete || isTyping) return;
-
-            if (selectedShapeId != null || selectedTextId != null) {
-                e.preventDefault();
-                deleteSelected();
-                return;
-            }
-
-            if (activeTool !== "cursor") {
-                return;
-            }
-
-            if (slides.length > 1) {
-                e.preventDefault();
-                handleDeleteSlide(currentSlide);
-            }
-        };
-
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    }, [
-        currentSlide,
-        slides,
-        isTyping,
-        selectedShapeId,
-        selectedTextId,
-        activeTool,
-    ]);
-
-
 
     const handleReorderSlides = async (newOrder: string[]) => {
         const updatedSlides = newOrder.map((id, index) => ({
@@ -784,6 +747,80 @@ const MainLayout: React.FC = () => {
         img.src = imageUrl;
     };
 
+    const handleCopyPaste = useCallback((e: KeyboardEvent) => {
+        const ae = document.activeElement as HTMLElement | null;
+        const isTypingInForm =
+            !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+        if (isTypingInForm || !currentSlide) return;
+
+        const isModifierPressed = e.ctrlKey || e.metaKey;
+
+        if (!isModifierPressed) return;
+
+        const currentSlideData = slideData[currentSlide] || { shapes: [], texts: [] };
+
+        if (e.key === 'c' || e.key === 'C') {
+            if (selectedShapeId != null) {
+                e.preventDefault();
+                const shapeToCopy = currentSlideData.shapes.find(s => String(s.id) === String(selectedShapeId));
+                if (shapeToCopy) {
+                    setClipboardData({ shapes: [shapeToCopy], texts: [] });
+                    console.log("도형 복사됨:", shapeToCopy.id);
+                }
+            } else if (selectedTextId != null) {
+                e.preventDefault();
+                const textToCopy = currentSlideData.texts.find(t => String(t.id) === String(selectedTextId));
+                if (textToCopy) {
+                    setClipboardData({ shapes: [], texts: [textToCopy] });
+                    console.log("텍스트 복사됨:", textToCopy.id);
+                }
+            }
+        }
+
+        if (e.key === 'v' || e.key === 'V') {
+            if (clipboardData && (clipboardData.shapes.length > 0 || clipboardData.texts.length > 0)) {
+                e.preventDefault();
+
+                const newShapes: Shape[] = clipboardData.shapes.map(s => ({
+                    ...s,
+                    id: Date.now() + Math.random(),
+                    x: (s.x ?? 0) + 10,
+                    y: (s.y ?? 0) + 10,
+                }));
+
+                const newTexts: TextItem[] = clipboardData.texts.map(t => ({
+                    ...t,
+                    id: Date.now() + Math.random(),
+                    x: (t.x ?? 0) + 10,
+                    y: (t.y ?? 0) + 10,
+                }));
+
+                setSlideData(prev => {
+                    const cur = prev[currentSlide] || { shapes: [], texts: [] };
+                    const newData = {
+                        ...prev,
+                        [currentSlide]: {
+                            shapes: [...cur.shapes, ...newShapes],
+                            texts: [...cur.texts, ...newTexts],
+                        }
+                    };
+                    if (newShapes.length > 0) setSelectedShapeId(String(newShapes[0].id));
+                    else if (newTexts.length > 0) setSelectedTextId(String(newTexts[0].id));
+
+                    setTimeout(() => broadcastFullSlideFromData(newData), 0);
+                    return newData;
+                });
+
+                const updatedClipboard = {
+                    shapes: newShapes,
+                    texts: newTexts
+                };
+                setClipboardData(updatedClipboard);
+            }
+        }
+    }, [currentSlide, slideData, selectedShapeId, selectedTextId, clipboardData, broadcastFullSlideFromData, setSlideData, setSelectedShapeId, setSelectedTextId]);
+
+
     const savePresentationTitle = async (title: string) => {
         try {
             await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/title`, {
@@ -801,6 +838,47 @@ const MainLayout: React.FC = () => {
             console.error("프레젠테이션 제목 업데이트 실패:", err);
         }
     };
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const ae = document.activeElement as HTMLElement | null;
+            const isTypingInForm =
+                !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+            if (isTypingInForm) return;
+
+            handleCopyPaste(e);
+            if (e.defaultPrevented) return;
+
+            const isBackspaceOrDelete = e.key === "Backspace" || e.key === "Delete";
+            if (!isBackspaceOrDelete || isTyping) return;
+
+            if (selectedShapeId != null || selectedTextId != null) {
+                e.preventDefault();
+                deleteSelected();
+                return;
+            }
+
+            if (activeTool !== "cursor") {
+                return;
+            }
+
+            if (slides.length > 1) {
+                e.preventDefault();
+                handleDeleteSlide(currentSlide);
+            }
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [
+        currentSlide,
+        slides,
+        isTyping,
+        selectedShapeId,
+        selectedTextId,
+        activeTool,
+        handleCopyPaste,
+    ]);
 
     const handleSaveHistory = async () => {
         try {
@@ -976,6 +1054,7 @@ const MainLayout: React.FC = () => {
                         onRedo={handleRedo}
                         canUndo={undoStack.length > 0}
                         canRedo={redoStack.length > 0}
+                        getAuthToken={getAuthToken}
                     />
                 </div>
             </div>

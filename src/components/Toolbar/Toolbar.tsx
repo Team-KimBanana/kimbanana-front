@@ -19,9 +19,10 @@ interface ToolbarProps {
     onRedo?: () => void;
     canUndo?: boolean;
     canRedo?: boolean;
+    getAuthToken: () => Promise<string | null>; // 💡 추가된 Props
 }
 
-const resizeImage = (file: File, maxWidth = 300): Promise<File> => {
+const resizeImage = (file: File, maxWidth = 1000): Promise<File> => {
     return new Promise((resolve) => {
         const img = new Image();
         const reader = new FileReader();
@@ -70,6 +71,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                              onRedo,
                                              canUndo = false,
                                              canRedo = false,
+                                             getAuthToken, // 💡 Props에 추가
                                          }) => {
     const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
     const [isTextMenuOpen, setIsTextMenuOpen] = useState(false);
@@ -209,8 +211,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                 accept="image/*"
                                 id="image-upload"
                                 style={{ display: "none" }}
-
-
                                 onChange={async (e) => {
                                     try {
                                         const file = e.target.files?.[0];
@@ -221,9 +221,17 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                         const formData = new FormData();
                                         formData.append("file", resized);
 
+                                        // 💡 인증 토큰을 가져와 헤더에 추가
+                                        const accessToken = await getAuthToken();
+                                        const headers: Record<string, string> = {};
+                                        if (accessToken) {
+                                            headers['Authorization'] = `Bearer ${accessToken}`;
+                                        }
+
                                         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/images/upload`, {
                                             method: "POST",
                                             body: formData,
+                                            headers: headers, // 헤더 적용
                                         });
 
                                         if (!res.ok) throw new Error("업로드 실패");
@@ -238,7 +246,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
                                         alert("이미지 업로드에 실패했습니다.");
                                     }
                                 }}
-
                             />
 
                             <label htmlFor="image-upload" className="toolbar-btn">
