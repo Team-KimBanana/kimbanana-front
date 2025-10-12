@@ -154,11 +154,18 @@
     cursor: pointer;
 }
 
-.profile-image {
+.profile-avatar {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    object-fit: cover;
+    background-color: #FFE44B;
+    color: #30270C;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .profile-dropdown {

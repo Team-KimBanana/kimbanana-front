@@ -40,8 +40,10 @@ const Header: React.FC<HeaderProps> = ({
     const presentationId = presentationIdProp ?? presentationIdParam ?? id;
 
     const handleLogout = () => {
-        logout();
-        navigate("/");
+        if (window.confirm("로그아웃 하시겠습니까?")) {
+            logout();
+            navigate("/");
+        }
     };
 
     const goHistory = () => {
@@ -148,6 +150,9 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="auth-buttons">
                     {isAuthenticated ? (
                         <div className="user-profile">
+                            <div className="profile-avatar">
+                                {user?.name?.charAt(0).toUpperCase() || 'U'}
+                            </div>
                             <img
                                 src={user?.profileImage || "/kimbanana/ui/assets/default-avatar.png"}
                                 alt="Profile"

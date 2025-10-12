@@ -18,7 +18,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
 
     useEffect(() => {
         clearError();
-    }, [clearError]);
+    }, []); // 모달이 열릴 때만 실행
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -30,8 +30,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const success = await login(formData);
-        if (success) {
+        const result = await login(formData);
+        if (result.success) {
             onClose();
         }
     };
@@ -72,6 +72,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
                             onChange={handleInputChange}
                             className="form-input"
                             placeholder="이메일을 입력해주세요"
+                            autoComplete="email"
                             required
                         />
                     </div>
@@ -89,6 +90,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
                                 onChange={handleInputChange}
                                 className="form-input"
                                 placeholder="비밀번호를 입력해주세요"
+                                autoComplete="current-password"
                                 required
                             />
                             <button

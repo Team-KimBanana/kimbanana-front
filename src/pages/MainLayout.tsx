@@ -7,14 +7,20 @@ import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
+import { useAuth } from "../contexts/AuthContext";
 
 import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
 import "./MainLayout.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
-const WS_URL = import.meta.env.VITE_WS_URL;
+// 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
+const API_BASE = import.meta.env.DEV 
+    ? '/api'  // 개발 환경: Vite 프록시 사용
+    : import.meta.env.VITE_API_BASE_URL;
+const WS_URL = import.meta.env.DEV 
+    ? '/ws-api'  // 개발 환경: Vite 프록시 사용
+    : import.meta.env.VITE_WS_URL;
 
 function dataURLtoBlob(dataURL: string) {
     const [header, base64] = dataURL.split(",");
@@ -26,6 +32,31 @@ function dataURLtoBlob(dataURL: string) {
 }
 
 const MainLayout: React.FC = () => {
+    const { user } = useAuth();
+    
+    // 인증 헤더를 포함한 fetch 헬퍼 함수
+    const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+        const accessToken = localStorage.getItem('accessToken');
+        const headers: Record<string, string> = {
+            ...options.headers as Record<string, string>,
+        };
+        
+        if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+        
+        console.log('🔐 fetchWithAuth 호출:', {
+            url,
+            hasToken: !!accessToken,
+            tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : 'none',
+            headers
+        });
+        
+        return fetch(url, {
+            ...options,
+            headers,
+        });
+    };
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
@@ -109,8 +140,18 @@ const MainLayout: React.FC = () => {
         form.append("file", blob, `thumb_${presentationId}.png`);
         form.append("presentationId", presentationId);
 
+        const accessToken = localStorage.getItem('accessToken');
+        const headers: Record<string, string> = {};
+        if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+
         const url = `${API_BASE}/images/thumbnails/presentation`;
-        const res = await fetch(url, { method: "POST", body: form });
+        const res = await fetch(url, { 
+            method: "POST", 
+            headers,
+            body: form 
+        });
 
         if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
     }
@@ -118,6 +159,9 @@ const MainLayout: React.FC = () => {
 
 
     useEffect(() => {
+        // WebSocket 연결과 별개로 슬라이드 먼저 로드
+        fetchSlides();
+        
         const client = new Client({
             brokerURL: WS_URL,
             reconnectDelay: 5000,
@@ -126,27 +170,44 @@ const MainLayout: React.FC = () => {
         client.onConnect = () => {
             console.log("웹소켓 연결됨");
             subscribeToStructure(client);
-            fetchSlides();
         };
 
-        client.activate();
-        stompClientRef.current = client;
+        client.onStompError = (frame) => {
+            console.error("WebSocket STOMP 에러:", frame);
+        };
+
+        client.onWebSocketError = (event) => {
+            console.error("WebSocket 연결 에러:", event);
+        };
+
+        try {
+            client.activate();
+            stompClientRef.current = client;
+        } catch (err) {
+            console.error("WebSocket 활성화 실패:", err);
+        }
 
         return () => {
-            client.deactivate();
+            try {
+                client.deactivate();
+            } catch (err) {
+                console.error("WebSocket 비활성화 실패:", err);
+            }
         };
     }, []);
 
 
     const fetchSlides = async () => {
         try {
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`);
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
             if (!res.ok) {
                 console.error("슬라이드 불러오기 실패", res.status);
                 return;
             }
 
             const json = await res.json();
+            console.log("📊 슬라이드 API 응답:", json);
+            
             const serverTitle =
                 json?.presentation?.presentation_title ??
                 json?.presentation_title ??
@@ -155,9 +216,10 @@ const MainLayout: React.FC = () => {
             setPresentationTitle(serverTitle);
 
             const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
+            console.log("📊 슬라이드 목록:", slideList);
 
             if (slideList.length === 0) {
-                const res2 = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
+                const res2 = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
                 const json2 = await res2.json();
                 const defaultSlideId: string = json2.slide_id;
                 const defaultOrder: number = json2.order;
@@ -181,9 +243,15 @@ const MainLayout: React.FC = () => {
 
             const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s): Promise<[string, SlideData]> => {
                 let d: unknown = s.data;
+                
+                console.log(`📊 슬라이드 ${s.slide_id} 데이터:`, {
+                    hasData: !!d,
+                    dataType: typeof d,
+                    data: d
+                });
 
-                if (d === undefined) {
-                    const detail = await fetch(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
+                if (d === undefined || d === null) {
+                    const detail = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
                     if (detail.ok) {
                         const dj = await detail.json();
                         d = dj?.data ?? { shapes: [], texts: [] };
@@ -208,12 +276,23 @@ const MainLayout: React.FC = () => {
                     texts  = Array.isArray(obj.texts)  ? obj.texts  : [];
                 }
 
+                console.log(`📊 슬라이드 ${s.slide_id} 파싱 결과:`, {
+                    shapesCount: shapes.length,
+                    textsCount: texts.length
+                });
+
                 return [s.slide_id, { shapes, texts }];
             });
 
             const dataEntries: [string, SlideData][] = await Promise.all(dataPromises);
 
             const newSlideData: Record<string, SlideData> = Object.fromEntries(dataEntries);
+            
+            console.log("📊 최종 슬라이드 데이터:", {
+                slidesCount: orders.length,
+                slideIds: orders.map(o => o.id),
+                slideData: newSlideData
+            });
 
             setSlides(orders);
             setSlideData(newSlideData);
@@ -236,32 +315,36 @@ const MainLayout: React.FC = () => {
         const topic = `/topic/presentation.${presentationId}.slide.${currentSlide}`;
         console.log("슬라이드 구독 시작:", topic);
 
-        subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
+        try {
+            subscriptionRef.current = stompClientRef.current.subscribe(topic, (message) => {
 
-            try {
-                const parsed = JSON.parse(message.body);
-                console.log("슬라이드 수신 메시지:", parsed);
+                try {
+                    const parsed = JSON.parse(message.body);
+                    console.log("슬라이드 수신 메시지:", parsed);
 
-                const data = typeof parsed.data === "string"
-                    ? JSON.parse(parsed.data)
-                    : parsed.data;
+                    const data = typeof parsed.data === "string"
+                        ? JSON.parse(parsed.data)
+                        : parsed.data;
 
-                if (!data) {
-                    console.warn("슬라이드 수신 데이터 파싱 실패:", parsed);
-                    return;
+                    if (!data) {
+                        console.warn("슬라이드 수신 데이터 파싱 실패:", parsed);
+                        return;
+                    }
+
+                    setSlideData(prev => ({
+                        ...prev,
+                        [currentSlide]: {
+                            shapes: data.shapes || [],
+                            texts: data.texts || [],
+                        },
+                    }));
+                } catch (err) {
+                    console.error("슬라이드 수신 메시지 처리 중 오류 발생:", err);
                 }
-
-                setSlideData(prev => ({
-                    ...prev,
-                    [currentSlide]: {
-                        shapes: data.shapes || [],
-                        texts: data.texts || [],
-                    },
-                }));
-            } catch (err) {
-                console.error("슬라이드 수신 메시지 처리 중 오류 발생:", err);
-            }
-        });
+            });
+        } catch (err) {
+            console.error("WebSocket 구독 실패:", err);
+        }
     }, [currentSlide]);
 
     const normalizeShapes = (shapes: Shape[]): Shape[] => {
@@ -338,7 +421,7 @@ const MainLayout: React.FC = () => {
         const payload = {
             slide_id: currentSlide,
             order: currentSlideOrder,
-            last_revision_user_id: "Hyehyun",
+            last_revision_user_id: user?.id || "anonymous",
             last_revision_date: lastRevisionDate,
             data: JSON.stringify({
                 shapes: normalizeShapes(slide.shapes),
@@ -360,10 +443,14 @@ const MainLayout: React.FC = () => {
             console.log("WebSocket 데이터 전송 대상:", destination);
             console.log("WebSocket 데이터 전송:", payload);
 
-            stompClientRef.current?.publish({
-                destination,
-                body: serializedPayload,
-            });
+            try {
+                stompClientRef.current?.publish({
+                    destination,
+                    body: serializedPayload,
+                });
+            } catch (err) {
+                console.error("WebSocket 데이터 전송 실패:", err);
+            }
 
             debounceTimerRef.current = null;
         }, 300);
@@ -450,9 +537,17 @@ const MainLayout: React.FC = () => {
 
     const handleAddSlide = async () => {
         try {
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
                 method: "POST",
+                headers: {
+                    'Accept': 'application/json',
+                },
             });
+            
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            
             const json = await res.json();
 
             const newId = json.slide_id;
@@ -496,7 +591,7 @@ const MainLayout: React.FC = () => {
             }
         }
 
-        await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+        await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -594,7 +689,7 @@ const MainLayout: React.FC = () => {
         }));
         setSlides(updatedSlides);
 
-        await fetch(`${API_BASE}/presentations/${presentationId}/slides`, {
+        await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -688,7 +783,7 @@ const MainLayout: React.FC = () => {
 
     const savePresentationTitle = async (title: string) => {
         try {
-            await fetch(`${API_BASE}/presentations/${presentationId}/slides/title`, {
+            await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/title`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -715,7 +810,7 @@ const MainLayout: React.FC = () => {
             const isoLocal = new Date(Date.now() - offset).toISOString().slice(0, -1);
 
             const payload = {
-                last_revision_user_id: "manual-save",
+                last_revision_user_id: user?.id || "anonymous",
                 slides: slides.map(s => {
                     const data = slideData[s.id] ?? { shapes: [], texts: [] };
 
@@ -759,14 +854,14 @@ const MainLayout: React.FC = () => {
                     return {
                         slide_id: s.id,
                         order: s.order,
-                        last_revision_user_id: "manual-save",
+                        last_revision_user_id: user?.id || "anonymous",
                         last_revision_date: isoLocal,
                         data: dataString,
                     };
                 }),
             };
 
-            const res = await fetch(`${API_BASE}/presentations/${presentationId}/histories`, {
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/histories`, {
                 method: "POST",
                 mode: "cors",
                 credentials: "omit",
