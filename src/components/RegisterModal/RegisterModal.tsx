@@ -22,7 +22,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
 
     useEffect(() => {
         clearError();
-    }, []); // 모달이 열릴 때만 실행
+    }, []);
 
     useEffect(() => {
         const strength = calculatePasswordStrength(formData.password);
@@ -96,22 +96,40 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
             return;
         }
 
-        // API 명세에 맞는 유효성 검사
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(formData.email)) {
             alert('올바른 이메일 형식을 입력해주세요.');
             return;
         }
 
-        const nameRegex = /^[a-zA-Z0-9_]{3,}$/;
-        if (!nameRegex.test(formData.name)) {
-            alert('이름은 최소 3자 이상의 영문/숫자/언더스코어만 사용 가능합니다.');
+        if (formData.name.length < 3) {
+            alert('이름은 최소 3자 이상이어야 합니다.');
             return;
         }
 
-        const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{6,}$/;
-        if (!passwordRegex.test(formData.password)) {
-            alert('비밀번호는 영문과 숫자를 포함한 6자 이상이어야 합니다.');
+        const nameCharRegex = /^[a-zA-Z0-9가-힣_-]+$/;
+        if (!nameCharRegex.test(formData.name)) {
+            alert('이름에는 한글, 영문, 숫자, 언더스코어(_), 하이픈(-) 외의 문자는 사용할 수 없습니다.');
+            return;
+        }
+
+        if (formData.password.length < 6) {
+            alert('비밀번호는 최소 6자 이상이어야 합니다.');
+            return;
+        }
+
+        if (/[가-힣]/.test(formData.password)) {
+            alert('비밀번호에는 한글을 사용할 수 없습니다.');
+            return;
+        }
+
+        if (!/[a-zA-Z]/.test(formData.password)) {
+            alert('비밀번호는 최소 하나의 영문자를 포함해야 합니다.');
+            return;
+        }
+
+        if (!/[0-9]/.test(formData.password)) {
+            alert('비밀번호는 최소 하나의 숫자를 포함해야 합니다.');
             return;
         }
 
@@ -175,7 +193,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
                             value={formData.email}
                             onChange={handleInputChange}
                             className="form-input"
-                            placeholder="이메일을 입력해주세요"
+                            placeholder="이메일을 입력해주세요 (예: user@example.com)"
                             required
                         />
                     </div>
@@ -192,7 +210,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
                                 value={formData.password}
                                 onChange={handleInputChange}
                                 className="form-input"
-                                placeholder="비밀번호를 입력해주세요"
+                                placeholder="비밀번호를 입력해주세요 (6자 이상, 영문/숫자 필수)"
                                 required
                             />
                             <button
@@ -272,7 +290,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
                     </button>
                 </form>
 
-             
+
                 <div className="divider">
                     <span className="divider-text">또는</span>
                 </div>

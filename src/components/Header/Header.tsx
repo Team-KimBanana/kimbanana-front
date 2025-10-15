@@ -17,6 +17,7 @@ interface HeaderProps {
     onApplyRestore?: () => Promise<void> | void;
     presentationId?: string;
     onSaveHistory?: () => void | Promise<void | boolean>;
+    onDownloadPdf?: () => Promise<void>;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -32,6 +33,7 @@ const Header: React.FC<HeaderProps> = ({
                                            onApplyRestore,
                                            presentationId: presentationIdProp,
                                            onSaveHistory,
+                                           onDownloadPdf,
                                        }) => {
     const navigate = useNavigate();
     const { user, isAuthenticated, logout } = useAuth();
@@ -140,7 +142,7 @@ const Header: React.FC<HeaderProps> = ({
                     <button className="header-btn share-btn">
                         <img src="/kimbanana/ui/assets/headerIcon/share.svg" alt="Share" />
                     </button>
-                    <button className="header-btn download-btn">
+                    <button className="header-btn download-btn" onClick={onDownloadPdf}>
                         <img src="/kimbanana/ui/assets/headerIcon/download.svg" alt="Download" />
                     </button>
                 </div>

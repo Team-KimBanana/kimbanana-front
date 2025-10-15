@@ -89,7 +89,10 @@ const Canvas: React.FC<CanvasProps> = ({
         thumbnailTimeout.current = setTimeout(() => {
             const stage = stageRef.current;
             if (!stage) return;
-            const dataUrl = stage.toDataURL({ pixelRatio: 0.25 });
+            const dataUrl = stage.toDataURL({
+                pixelRatio: 3.0,
+                mimeType: 'image/png'
+            });
             updateThumbnail(currentSlide, dataUrl);
         }, 300);
     }, [shapes, texts, currentSlide, updateThumbnail]);

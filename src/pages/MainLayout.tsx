@@ -2,16 +2,16 @@ import React, {useState, useEffect, useRef, useCallback} from "react";
 import { useParams } from "react-router-dom";
 import ReactDOM from "react-dom/client";
 import {Client, StompSubscription} from "@stomp/stompjs";
-
 import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 import { useAuth } from "../contexts/AuthContext";
-
 import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
+import { demoPresentations } from "../data/demoData";
+import jsPDF from 'jspdf';
 import "./MainLayout.css";
 
 const API_BASE = import.meta.env.DEV
@@ -89,6 +89,8 @@ const MainLayout: React.FC = () => {
     const { id } = useParams();
     const presentationId = id ?? "p1";
 
+    const isDemo = presentationId.startsWith('demo-');
+
     const goToNextSlide = () => {
         const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
         if (currentIndex < slides.length - 1) {
@@ -152,9 +154,83 @@ const MainLayout: React.FC = () => {
         if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
     }
 
+    const handleDownloadPdf = async () => {
+        if (!slides.length || Object.keys(thumbnails).length !== slides.length) {
+            alert("모든 슬라이드 썸네일이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+            return;
+        }
+
+        const ORIGINAL_WIDTH = 1280;
+        const ORIGINAL_HEIGHT = 720;
+        const SLIDE_ASPECT_RATIO = ORIGINAL_WIDTH / ORIGINAL_HEIGHT;
+
+        const CUSTOM_PAGE_WIDTH = 297;
+        const CUSTOM_PAGE_HEIGHT = CUSTOM_PAGE_WIDTH / SLIDE_ASPECT_RATIO;
+
+        const doc = new jsPDF('l', 'mm', [CUSTOM_PAGE_WIDTH, CUSTOM_PAGE_HEIGHT]);
+
+        const docWidth = doc.internal.pageSize.getWidth();
+        const docHeight = doc.internal.pageSize.getHeight();
+
+        for (let i = 0; i < slides.length; i++) {
+            const slideId = slides[i].id;
+            const imgData = thumbnails[slideId];
+
+            if (!imgData) {
+                console.warn(`슬라이드 ${slideId}의 썸네일 데이터가 누락되었습니다.`);
+                continue;
+            }
+
+            if (i > 0) {
+                doc.addPage();
+            }
+
+            const finalImgWidth = docWidth;
+            const finalImgHeight = docHeight;
+            const xOffset = 0;
+            const yOffset = 0;
+
+            doc.addImage(
+                imgData,
+                'PNG',
+                xOffset,
+                yOffset,
+                finalImgWidth,
+                finalImgHeight
+            );
+        }
+
+        doc.save(`${presentationTitle || 'Presentation'}.pdf`);
+    };
 
     const fetchSlides = async () => {
         try {
+            if (isDemo && demoPresentations[presentationId]) {
+                const demoData = demoPresentations[presentationId];
+
+                setPresentationTitle(demoData.title);
+
+                const orders: SlideOrder[] = demoData.slides
+                    .map(s => ({ id: s.id, order: s.order }))
+                    .sort((a, b) => a.order - b.order);
+
+                const newSlideData: Record<string, SlideData> = {};
+                demoData.slides.forEach(slide => {
+                    newSlideData[slide.id] = slide.data;
+                });
+
+                setSlides(orders);
+                setSlideData(newSlideData);
+                setCurrentSlide(orders[0]?.id ?? "");
+
+                orders.forEach(({ id }, idx) => {
+                    renderSlideThumbnail(id, newSlideData[id], idx === 0);
+                });
+
+                console.log("📊 데모 프레젠테이션 로드됨:", demoData.title);
+                return;
+            }
+
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
             if (!res.ok) {
                 console.error("슬라이드 불러오기 실패", res.status);
@@ -264,6 +340,11 @@ const MainLayout: React.FC = () => {
 
 
     useEffect(() => {
+        if (isDemo) {
+            fetchSlides();
+            return;
+        }
+
         let client: Client | null = null;
         let cleanupDeactivate = () => {};
 
@@ -983,6 +1064,7 @@ const MainLayout: React.FC = () => {
                 onTitleChange={setPresentationTitle}
                 onTitleSave={savePresentationTitle}
                 onSaveHistory={handleSaveHistory}
+                onDownloadPdf={handleDownloadPdf}
             />
             <div className="content">
                 <Sidebar variant="main"

@@ -1,5 +1,3 @@
-// import * as Y from "yjs";
-
 export interface Shape {
     id: number;
     type: "rectangle" | "circle" | "triangle" | "image" | "star" | "arrow" | "line";
@@ -170,7 +168,6 @@ export interface UserInfo {
     name: string;
 }
 
-// 프로필 API 응답 타입 (간소화된 버전)
 export interface ProfileResponse {
     id: string;
     email: string;
