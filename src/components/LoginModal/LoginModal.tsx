@@ -37,7 +37,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
     };
 
     const handleOAuthLogin = (provider: 'google' | 'github') => {
-        window.location.href = `/api/auth/${provider}`;
+        window.location.href = `/oauth2/authorization/${provider}`;
     };
 
     const isFormValid = formData.email && formData.password;
@@ -124,7 +124,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
               <div className="divider">
                 <span className="divider-text">또는</span>
               </div>
-            
+
                 <div className="social-login">
                     <button
                         className="social-button google-button"
