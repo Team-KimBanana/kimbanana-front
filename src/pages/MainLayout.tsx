@@ -12,6 +12,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
 import useFullscreen from "../hooks/useFullscreen";
+import { demoPresentations } from "../data/demoData";
 import "./MainLayout.css";
 
 const API_BASE = import.meta.env.DEV
@@ -88,6 +89,7 @@ const MainLayout: React.FC = () => {
 
     const { id } = useParams();
     const presentationId = id ?? "p1";
+    const isDemo = presentationId.startsWith('demo-');
 
     const goToNextSlide = () => {
         const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
@@ -155,6 +157,34 @@ const MainLayout: React.FC = () => {
 
     const fetchSlides = async () => {
         try {
+            // 데모 프레젠테이션인 경우 로컬 데이터 사용
+            if (isDemo && demoPresentations[presentationId]) {
+                const demoData = demoPresentations[presentationId];
+                
+                setPresentationTitle(demoData.title);
+                
+                const orders: SlideOrder[] = demoData.slides
+                    .map(s => ({ id: s.id, order: s.order }))
+                    .sort((a, b) => a.order - b.order);
+                
+                const newSlideData: Record<string, SlideData> = {};
+                demoData.slides.forEach(slide => {
+                    newSlideData[slide.id] = slide.data;
+                });
+                
+                setSlides(orders);
+                setSlideData(newSlideData);
+                setCurrentSlide(orders[0]?.id ?? "");
+                
+                // 썸네일 렌더링
+                orders.forEach(({ id }, idx) => {
+                    renderSlideThumbnail(id, newSlideData[id], idx === 0);
+                });
+                
+                console.log("📊 데모 프레젠테이션 로드됨:", demoData.title);
+                return;
+            }
+            
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
             if (!res.ok) {
                 console.error("슬라이드 불러오기 실패", res.status);
@@ -264,6 +294,12 @@ const MainLayout: React.FC = () => {
 
 
     useEffect(() => {
+        // 데모 모드인 경우 WebSocket 없이 바로 슬라이드 로드
+        if (isDemo) {
+            fetchSlides();
+            return;
+        }
+
         let client: Client | null = null;
         let cleanupDeactivate = () => {};
 

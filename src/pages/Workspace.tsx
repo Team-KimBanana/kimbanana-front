@@ -6,6 +6,8 @@ import {Presentation, PresentationResponse, CreatePresentationRequest} from '../
 import { useAuth } from '../contexts/AuthContext';
 import LoginModal from '../components/LoginModal/LoginModal';
 import RegisterModal from '../components/RegisterModal/RegisterModal';
+import ThumbnailRenderer from '../components/ThumbnailRenderer/ThumbnailRenderer';
+import { demoPresentations } from '../data/demoData';
 import './Workspace.css';
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || '';
@@ -38,6 +40,7 @@ const Workspace: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [thumbnailCache, setThumbnailCache] = useState<{ [key: string]: string }>({});
+    const [demoThumbnails, setDemoThumbnails] = useState<{ [key: string]: string }>({});
 
     // 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
     const API_BASE_URL = import.meta.env.DEV 
@@ -327,6 +330,13 @@ const Workspace: React.FC = () => {
         setRegisterModalOpen(true);
     };
 
+    const handleDemoThumbnailRendered = (slideId: string, dataUrl: string) => {
+        setDemoThumbnails(prev => ({
+            ...prev,
+            [slideId]: dataUrl
+        }));
+    };
+
     if (isLoading) {
         return (
             <div className="workspace-loading">
@@ -421,8 +431,11 @@ const Workspace: React.FC = () => {
                             <div className="demo-presentations">
                                 <div className="demo-card" onClick={() => navigate('/editor/demo-1')}>
                                     <div className="demo-thumbnail">
-                                        <img src="/assets/demo/demo1.png" alt="비즈니스 기획서" 
-                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                        <img 
+                                            src={demoThumbnails['demo-1'] || '/assets/default-thumbnail.png'} 
+                                            alt="비즈니스 기획서" 
+                                            onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} 
+                                        />
                                     </div>
                                     <div className="demo-content">
                                         <h3 className="demo-card-title">비즈니스 기획서</h3>
@@ -432,8 +445,11 @@ const Workspace: React.FC = () => {
                                 </div>
                                 <div className="demo-card" onClick={() => navigate('/editor/demo-2')}>
                                     <div className="demo-thumbnail">
-                                        <img src="/assets/demo/demo2.png" alt="교육 자료" 
-                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                        <img 
+                                            src={demoThumbnails['demo-2'] || '/assets/default-thumbnail.png'} 
+                                            alt="교육 자료" 
+                                            onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} 
+                                        />
                                     </div>
                                     <div className="demo-content">
                                         <h3 className="demo-card-title">교육 자료</h3>
@@ -443,8 +459,11 @@ const Workspace: React.FC = () => {
                                 </div>
                                 <div className="demo-card" onClick={() => navigate('/editor/demo-3')}>
                                     <div className="demo-thumbnail">
-                                        <img src="/assets/demo/demo3.png" alt="제품 소개" 
-                                             onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} />
+                                        <img 
+                                            src={demoThumbnails['demo-3'] || '/assets/default-thumbnail.png'} 
+                                            alt="제품 소개" 
+                                            onError={e => { e.currentTarget.src = '/assets/default-thumbnail.png'; }} 
+                                        />
                                     </div>
                                     <div className="demo-content">
                                         <h3 className="demo-card-title">제품 소개</h3>
@@ -452,6 +471,18 @@ const Workspace: React.FC = () => {
                                         <span className="demo-badge">데모</span>
                                     </div>
                                 </div>
+                            </div>
+                            
+                            {/* 숨겨진 ThumbnailRenderer로 데모 썸네일 생성 */}
+                            <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+                                {Object.entries(demoPresentations).map(([demoId, demo]) => (
+                                    <ThumbnailRenderer
+                                        key={demoId}
+                                        slideId={demoId}
+                                        slideData={demo.slides[0].data}
+                                        onRendered={handleDemoThumbnailRendered}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>
