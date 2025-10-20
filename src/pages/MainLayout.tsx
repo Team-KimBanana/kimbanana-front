@@ -155,8 +155,8 @@ const MainLayout: React.FC = () => {
     }
 
     const handleDownloadPdf = async () => {
-        if (!slides.length || Object.keys(thumbnails).length !== slides.length) {
-            alert("모든 슬라이드 썸네일이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+        if (!slides.length) {
+            alert("다운로드할 슬라이드가 없습니다.");
             return;
         }
 
@@ -172,31 +172,51 @@ const MainLayout: React.FC = () => {
         const docWidth = doc.internal.pageSize.getWidth();
         const docHeight = doc.internal.pageSize.getHeight();
 
+        const renderSlideHighRes = (slideId: string, data: SlideData): Promise<string> => {
+            return new Promise((resolve) => {
+                const container = document.createElement("div");
+                document.body.appendChild(container);
+                const root = ReactDOM.createRoot(container);
+
+                const handleRendered = (_id: string, dataUrl: string) => {
+                    root.unmount();
+                    document.body.removeChild(container);
+                    resolve(dataUrl);
+                };
+
+                root.render(
+                    <ThumbnailRenderer 
+                        slideId={slideId} 
+                        slideData={data} 
+                        onRendered={handleRendered}
+                        pixelRatio={3.0}
+                    />
+                );
+            });
+        };
+
         for (let i = 0; i < slides.length; i++) {
             const slideId = slides[i].id;
-            const imgData = thumbnails[slideId];
+            const data = slideData[slideId];
 
-            if (!imgData) {
-                console.warn(`슬라이드 ${slideId}의 썸네일 데이터가 누락되었습니다.`);
+            if (!data) {
+                console.warn(`슬라이드 ${slideId}의 데이터가 누락되었습니다.`);
                 continue;
             }
+
+            const imgData = await renderSlideHighRes(slideId, data);
 
             if (i > 0) {
                 doc.addPage();
             }
 
-            const finalImgWidth = docWidth;
-            const finalImgHeight = docHeight;
-            const xOffset = 0;
-            const yOffset = 0;
-
             doc.addImage(
                 imgData,
                 'PNG',
-                xOffset,
-                yOffset,
-                finalImgWidth,
-                finalImgHeight
+                0,
+                0,
+                docWidth,
+                docHeight
             );
         }
 
@@ -227,7 +247,7 @@ const MainLayout: React.FC = () => {
                     renderSlideThumbnail(id, newSlideData[id], idx === 0);
                 });
 
-                console.log("📊 데모 프레젠테이션 로드됨:", demoData.title);
+                console.log("데모 프레젠테이션 로드됨:", demoData.title);
                 return;
             }
 

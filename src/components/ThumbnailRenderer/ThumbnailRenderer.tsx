@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Ellipse, Line, Text, Image as KonvaImage } from "react-konva";
+import { Stage, Layer, Rect, Ellipse, Line, Text, Image as KonvaImage, Star, Arrow } from "react-konva";
 import Konva from "konva";
 import { Shape, TextItem } from "../../types/types.ts";
 
@@ -7,9 +7,10 @@ interface ThumbnailRendererProps {
     slideId: string;
     slideData: { shapes: Shape[]; texts: TextItem[] };
     onRendered: (slideId: string, dataUrl: string) => void;
+    pixelRatio?: number;
 }
 
-const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideData, onRendered }) => {
+const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideData, onRendered, pixelRatio = 0.25 }) => {
     const stageRef = useRef<Konva.Stage>(null);
     const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
 
@@ -36,7 +37,7 @@ const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideDat
 
             // 이미지 로드 후 썸네일 생성
             setTimeout(() => {
-                const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 0.25 });
+                const dataUrl = stageRef.current?.toDataURL({ pixelRatio });
                 if (dataUrl) {
                     onRendered(slideId, dataUrl);
                 }
@@ -44,7 +45,7 @@ const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideDat
         };
 
         loadImages();
-    }, [slideData.shapes, slideId, onRendered]);
+    }, [slideData.shapes, slideId, onRendered, pixelRatio]);
 
     const drawTrianglePoints = (): number[] => [0, -50, -50, 50, 50, 50];
 
@@ -100,6 +101,44 @@ const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideDat
                                     width={shape.width!}
                                     height={shape.height!}
                                     image={images[shape.id]}
+                                />
+                            );
+                        }
+                        if (shape.type === "star") {
+                            return (
+                                <Star
+                                    key={shape.id}
+                                    x={shape.x!}
+                                    y={shape.y!}
+                                    numPoints={shape.numPoints ?? 5}
+                                    innerRadius={shape.innerRadius ?? 20}
+                                    outerRadius={shape.outerRadius ?? 40}
+                                    fill={shape.color}
+                                />
+                            );
+                        }
+                        if (shape.type === "arrow") {
+                            return (
+                                <Arrow
+                                    key={shape.id}
+                                    points={shape.points || [shape.x ?? 0, shape.y ?? 0, (shape.x ?? 0) + 100, (shape.y ?? 0)]}
+                                    pointerLength={shape.pointerLength ?? 10}
+                                    pointerWidth={shape.pointerWidth ?? 10}
+                                    stroke={shape.color || "black"}
+                                    fill={shape.color || "black"}
+                                    strokeWidth={shape.strokeWidth || 3}
+                                />
+                            );
+                        }
+                        if (shape.type === "line") {
+                            return (
+                                <Line
+                                    key={shape.id}
+                                    points={shape.points || []}
+                                    stroke={shape.color || "black"}
+                                    strokeWidth={shape.strokeWidth || 3}
+                                    lineCap="round"
+                                    lineJoin="round"
                                 />
                             );
                         }
