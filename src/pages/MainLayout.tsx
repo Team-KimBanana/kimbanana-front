@@ -1,57 +1,35 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
 import { useParams } from "react-router-dom";
-import ReactDOM from "react-dom/client";
-import * as Y from 'yjs';
-import { WebsocketProvider } from 'y-websocket';
+import * as Y from "yjs";
+import {Client, StompSubscription} from "@stomp/stompjs";
 
 import Header from "../components/Header/Header.tsx";
 import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 import { useAuth } from "../contexts/AuthContext";
-import {Shape, TextItem, SlideData, SlideOrder } from "../types/types.ts";
-import ThumbnailRenderer from "../components/ThumbnailRenderer/ThumbnailRenderer.tsx";
+import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
 import useFullscreen from "../hooks/useFullscreen";
+import { useThumbnails } from "../hooks/useThumbnails";
 import { demoPresentations } from "../data/demoData";
 import jsPDF from 'jspdf';
 import "./MainLayout.css";
 
-type ReceivedSlide = {
-    slide_id: string;
-    order: number;
-    data?: string | { shapes?: Shape[]; texts?: TextItem[] };
-};
-
-const API_BASE = import.meta.env.DEV
-    ? '/api'
-    : import.meta.env.VITE_API_BASE_URL;
-const YJS_WS_URL = import.meta.env.DEV
-    ? (import.meta.env.VITE_YJS_WS_URL) || 'ws://localhost:8000'
-    : (import.meta.env.VITE_YJS_WS_URL);
-
-if (!YJS_WS_URL) {
-    console.error("VITE_YJS_WS_URL is not defined in .env");
-}
+const API_BASE = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_BASE_URL;
+const WS_URL   = import.meta.env.DEV ? (import.meta.env.VITE_WS_URL || 'wss://localhost:8080/ws') : import.meta.env.VITE_WS_URL;
 
 type YSlideDataMap = Y.Map<any>;
 type YPresentationMap = Y.Map<YSlideDataMap>;
 
 const yMapToObject = (yMap: YPresentationMap): Record<string, SlideData> => {
     const obj: Record<string, SlideData> = {};
-    yMap.forEach((ySlideData: YSlideDataMap, slideId: string) => {
-        const shapes = (ySlideData.get('shapes') as Y.Array<Shape> | undefined)?.toJSON?.() || [];
-        const texts = (ySlideData.get('texts') as Y.Array<TextItem> | undefined)?.toJSON?.() || [];
+    yMap.forEach((ySlide: YSlideDataMap, slideId: string) => {
+        const shapes = (ySlide.get("shapes") as Y.Array<Shape> | undefined)?.toJSON?.() || [];
+        const texts  = (ySlide.get("texts")  as Y.Array<TextItem> | undefined)?.toJSON?.() || [];
         obj[slideId] = { shapes: shapes as Shape[], texts: texts as TextItem[] };
     });
     return obj;
 };
-
-function uint8ToBase64(u8: Uint8Array): string {
-    let bin = '';
-    const len = u8.byteLength;
-    for (let i = 0; i < len; i++) bin += String.fromCharCode(u8[i]);
-    return btoa(bin);
-}
 
 function dataURLtoBlob(dataURL: string) {
     const [header, base64] = dataURL.split(",");
@@ -63,16 +41,11 @@ function dataURLtoBlob(dataURL: string) {
 }
 
 const MainLayout: React.FC = () => {
-    const { user, getAuthToken } = useAuth?.() ?? ({
-        user: null,
-        getAuthToken: () => Promise.resolve(null)
-    } as never);
+    const { user, getAuthToken } = useAuth?.() ?? ({ user: null, getAuthToken: () => Promise.resolve(null) } as never);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
         const accessToken = await getAuthToken();
-        const headers: Record<string, string> = {
-            ...(options.headers as Record<string, string>),
-        };
+        const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
         if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
         return fetch(url, { ...options, headers });
     }, [getAuthToken]);
@@ -81,21 +54,14 @@ const MainLayout: React.FC = () => {
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
     const [currentSlide, setCurrentSlide] = useState<string>("");
-
-    const [mirrorSlideData, setMirrorSlideData] = useState<Record<string, SlideData>>({});
-
-    const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
+    const [slideData, setSlideData] = useState<Record<string, SlideData>>({});
     const [isTyping, setIsTyping] = useState<boolean>(false);
     const [defaultFontSize, setDefaultFontSize] = useState(20);
     const [eraserSize, setEraserSize] = useState(15);
     const [eraserMode, setEraserMode] = useState<"size" | "area">("size");
-
-    // Yjs Ref
-    const yDocRef = useRef<Y.Doc | null>(null);
-    const yMapRef = useRef<YPresentationMap | null>(null);
-    const wsProviderRef = useRef<WebsocketProvider | null>(null);
-    const undoManagerRef = useRef<Y.UndoManager | null>(null);
-    const ySlidesOrderRef = useRef<Y.Array<string> | null>(null);
+    const [presentationTitle, setPresentationTitle] = useState<string | undefined>(undefined);
+    const [undoStack, setUndoStack] = useState<SlideData[]>([]);
+    const [redoStack, setRedoStack] = useState<SlideData[]>([]);
 
     const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
@@ -104,58 +70,27 @@ const MainLayout: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
-    const [presentationTitle, setPresentationTitle] = useState<string | undefined>(undefined);
-
-    const [canUndo, setCanUndo] = useState(false);
-    const [canRedo, setCanRedo] = useState(false);
-    const refreshUndoRedo = useCallback(() => {
-        const m = undoManagerRef.current as unknown as { undoStack?: unknown[]; redoStack?: unknown[] } | null;
-        setCanUndo(!!m && Array.isArray(m.undoStack) && m.undoStack.length > 0);
-        setCanRedo(!!m && Array.isArray(m.redoStack) && m.redoStack.length > 0);
-    }, []);
 
     const { id } = useParams();
     const presentationId = id ?? "p1";
     const isDemo = presentationId.startsWith('demo-');
 
-    const goToNextSlide = () => {
-        const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
-        if (currentIndex < slides.length - 1) setCurrentSlide(slides[currentIndex + 1].id);
-    };
+    const stompClientRef = useRef<Client | null>(null);
+    const structureSubRef = useRef<StompSubscription | null>(null);
+    const slideSubRef = useRef<StompSubscription | null>(null);
 
-    const goToPrevSlide = () => {
-        const currentIndex = slides.findIndex(slide => slide.id === currentSlide);
-        if (currentIndex > 0) setCurrentSlide(slides[currentIndex - 1].id);
-    };
+    const yDocRef = useRef<Y.Doc | null>(null);
+    const yMapRef = useRef<YPresentationMap | null>(null);
+    const yOrderRef = useRef<Y.Array<string> | null>(null);
+    const isApplyingRemoteUpdate = useRef(false);
 
-    useEffect(() => {
-        setIsPresentationMode(isFullscreen);
-    }, [isFullscreen]);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastBroadcastData = useRef<string>("");
 
-    const renderSlideThumbnail = (
-        slideId: string,
-        data: { shapes: Shape[]; texts: TextItem[] },
-        isFirst: boolean = false
-    ) => {
-        const container = document.createElement("div");
-        document.body.appendChild(container);
-        const root = ReactDOM.createRoot(container);
+    useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
 
-        const handleRendered = (id: string, dataUrl: string) => {
-            setThumbnails(prev => ({ ...prev, [id]: dataUrl }));
-            if (isFirst) {
-                uploadFirstSlideThumbnail(dataUrl, presentationId).catch(err => console.error("썸네일 업로드 실패:", err));
-            }
-            root.unmount();
-            document.body.removeChild(container);
-        };
-
-        root.render(
-            <ThumbnailRenderer slideId={slideId} slideData={data} onRendered={handleRendered} />
-        );
-    };
-
-    async function uploadFirstSlideThumbnail(dataUrl: string, presentationId: string) {
+    // 썸네일 관리 훅
+    const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
         const blob = dataURLtoBlob(dataUrl);
         const form = new FormData();
         form.append("file", blob, `thumb_${presentationId}.png`);
@@ -163,269 +98,459 @@ const MainLayout: React.FC = () => {
         const url = `${API_BASE}/images/thumbnails/presentation`;
         const res = await fetchWithAuth(url, { method: "POST", body: form });
         if (!res.ok) throw new Error(`thumbnail upload failed: ${res.status}`);
-    }
+    }, [presentationId, fetchWithAuth]);
+
+    const { thumbnails, renderThumbnail, scheduleThumbnail, updateThumbnail, renderHighResThumbnail } = useThumbnails({
+        uploadFirstThumbnail: uploadFirstThumbnailToServer,
+    });
+
+    const goToNextSlide = () => {
+        const idx = slides.findIndex(s => s.id === currentSlide);
+        if (idx < slides.length - 1) setCurrentSlide(slides[idx + 1].id);
+    };
+    const goToPrevSlide = () => {
+        const idx = slides.findIndex(s => s.id === currentSlide);
+        if (idx > 0) setCurrentSlide(slides[idx - 1].id);
+    };
+
+    const normalizeShapes = (shapes: Shape[]): Shape[] =>
+        shapes.map((shape) => {
+            const base = { id: shape.id, type: shape.type, x: shape.x, y: shape.y, rotation: shape.rotation ?? 0 };
+            if (shape.type === "circle")    return { ...base, radiusX: shape.radiusX ?? 50, radiusY: shape.radiusY ?? 50, color: shape.color || "#000000" };
+            if (shape.type === "rectangle") return { ...base, width: shape.width || 0, height: shape.height || 0, color: shape.color || "#000000" };
+            if (shape.type === "triangle")  return { ...base, points: shape.points || [], color: shape.color || "#000000" };
+            if (shape.type === "image")     return { ...base, width: shape.width || 0, height: shape.height || 0, imageSrc: shape.imageSrc || "" };
+            if (shape.type === "star")      return { ...base, numPoints: shape.numPoints ?? 5, innerRadius: shape.innerRadius ?? 20, outerRadius: shape.outerRadius ?? 40, color: shape.color || "#000000" };
+            if (shape.type === "arrow")     return { ...base, points: shape.points || [], pointerLength: shape.pointerLength ?? 10, pointerWidth: shape.pointerWidth ?? 10, color: shape.color || "#000000", strokeWidth: shape.strokeWidth || 3 };
+            if (shape.type === "line")      return { ...base, points: shape.points || [], color: shape.color || "#000000", strokeWidth: shape.strokeWidth || 3 };
+            return shape;
+        });
+
+    const normalizeTexts = (texts: TextItem[]): TextItem[] =>
+        texts.map((t) => ({ id: t.id, text: t.text, x: t.x, y: t.y, color: t.color || "#000000", fontSize: t.fontSize || 18 }));
+
+    const getActiveYSlide = (): YSlideDataMap | null => {
+        if (!yMapRef.current || !currentSlide) return null;
+        return yMapRef.current.get(currentSlide) as YSlideDataMap | null;
+    };
 
     const handleDownloadPdf = async () => {
-        if (!slides.length) {
-            alert("다운로드할 슬라이드가 없습니다.");
-            return;
-        }
-        const ORIGINAL_WIDTH = 1280;
-        const ORIGINAL_HEIGHT = 720;
-        const SLIDE_ASPECT_RATIO = ORIGINAL_WIDTH / ORIGINAL_HEIGHT;
-        const CUSTOM_PAGE_WIDTH = 297;
-        const CUSTOM_PAGE_HEIGHT = CUSTOM_PAGE_WIDTH / SLIDE_ASPECT_RATIO;
+        if (!slides.length) { alert("다운로드할 슬라이드가 없습니다."); return; }
+        const ORIGINAL_WIDTH = 1280, ORIGINAL_HEIGHT = 720, SLIDE_ASPECT_RATIO = ORIGINAL_WIDTH / ORIGINAL_HEIGHT;
+        const CUSTOM_PAGE_WIDTH = 297, CUSTOM_PAGE_HEIGHT = CUSTOM_PAGE_WIDTH / SLIDE_ASPECT_RATIO;
         const doc = new jsPDF('l', 'mm', [CUSTOM_PAGE_WIDTH, CUSTOM_PAGE_HEIGHT]);
         const docWidth = doc.internal.pageSize.getWidth();
         const docHeight = doc.internal.pageSize.getHeight();
 
-        const renderSlideHighRes = (slideId: string, data: SlideData): Promise<string> => new Promise((resolve) => {
-            const container = document.createElement("div");
-            document.body.appendChild(container);
-            const root = ReactDOM.createRoot(container);
-            const handleRendered = (_id: string, dataUrl: string) => {
-                root.unmount();
-                document.body.removeChild(container);
-                resolve(dataUrl);
-            };
-            root.render(
-                <ThumbnailRenderer slideId={slideId} slideData={data} onRendered={handleRendered} pixelRatio={3.0} />
-            );
-        });
-
         for (let i = 0; i < slides.length; i++) {
             const slideId = slides[i].id;
-            const data = mirrorSlideData[slideId];
-            if (!data) {
-                console.warn(`슬라이드 ${slideId}의 데이터가 누락되었습니다.`);
-                continue;
-            }
-            const imgData = await renderSlideHighRes(slideId, data);
+            const data = slideData[slideId];
+            if (!data) continue;
+            const imgData = await renderHighResThumbnail(slideId, data);
             if (i > 0) doc.addPage();
             doc.addImage(imgData, 'PNG', 0, 0, docWidth, docHeight);
         }
         doc.save(`${presentationTitle || 'Presentation'}.pdf`);
     };
 
-    // Yjs 초기화, Provider 연결
+    const fetchSlides = useCallback(async () => {
+        if (isDemo && demoPresentations[presentationId]) {
+            const demo = demoPresentations[presentationId];
+            setPresentationTitle(demo.title);
+
+            const orders: SlideOrder[] = demo.slides.map(s => ({ id: s.id, order: s.order })).sort((a,b)=>a.order-b.order);
+            yDocRef.current?.transact(() => {
+                const yMap = yMapRef.current!;
+                const yOrder = yOrderRef.current!;
+                orders.forEach(({id}) => {
+                    const ySlide = new Y.Map();
+                    ySlide.set("shapes", new Y.Array<Shape>());
+                    ySlide.set("texts", new Y.Array<TextItem>());
+                    const data = demo.slides.find(s => s.id === id)?.data;
+                    if (data) {
+                        (ySlide.get("shapes") as Y.Array<Shape>).insert(0, normalizeShapes(data.shapes || []));
+                        (ySlide.get("texts")  as Y.Array<TextItem>).insert(0, normalizeTexts(data.texts  || []));
+                    }
+                    yMap.set(id, ySlide);
+                });
+                yOrder.delete(0, yOrder.length);
+                yOrder.push(orders.map(o=>o.id));
+            }, "demo-load");
+
+            setSlides(orders);
+            setSlideData(Object.fromEntries(orders.map(o => [o.id, demo.slides.find(s=>s.id===o.id)!.data])));
+            setCurrentSlide(prev => orders.find(o => o.id === prev)?.id ?? orders[0]?.id ?? "");
+
+            orders.forEach(({ id }, idx) => {
+                const data = demo.slides.find(s=>s.id===id)?.data;
+                if (data) renderThumbnail(id, data, idx===0);
+            });
+            return;
+            }
+
+        try {
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
+            if (!res.ok) { console.error("슬라이드 불러오기 실패", res.status); return; }
+            const json = await res.json();
+            const serverTitle = json?.presentation?.presentation_title ?? json?.presentation_title ?? json?.title ?? "";
+            setPresentationTitle(serverTitle);
+
+            const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
+            if (slideList.length === 0) {
+                const res2 = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST" });
+                const json2 = await res2.json();
+                const defaultSlideId: string = json2.slide_id;
+                const defaultOrder: number = json2.order;
+                const orders: SlideOrder[] = [{ id: defaultSlideId, order: defaultOrder }];
+                yDocRef.current?.transact(() => {
+                    const yMap = yMapRef.current!;
+                    const yOrder = yOrderRef.current!;
+                    const ySlide = new Y.Map();
+                    ySlide.set("shapes", new Y.Array<Shape>());
+                    ySlide.set("texts", new Y.Array<TextItem>());
+                    yMap.set(defaultSlideId, ySlide);
+                    yOrder.delete(0, yOrder.length);
+                    yOrder.push([defaultSlideId]);
+                }, "seed-default");
+                setSlides(orders);
+                setSlideData({ [defaultSlideId]: { shapes: [], texts: [] } });
+                setCurrentSlide(defaultSlideId);
+                renderThumbnail(defaultSlideId, { shapes: [], texts: [] }, true);
+                return;
+            }
+
+            const orders: SlideOrder[] = slideList.map(s => ({ id: s.slide_id, order: s.order })).sort((a,b)=>a.order-b.order);
+
+            const dataPromises: Promise<[string, SlideData]>[] = slideList.map(async (s): Promise<[string, SlideData]> => {
+                let d: any = s.data;
+                if (d == null) {
+                    const detail = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/${s.slide_id}`);
+                    if (detail.ok) { const dj = await detail.json(); d = dj?.data ?? { shapes:[], texts:[] }; }
+                    else { d = { shapes:[], texts:[] }; }
+                }
+                if (typeof d === "string") { try { d = JSON.parse(d); } catch { d = { shapes:[], texts:[] }; } }
+                const shapes: Shape[] = Array.isArray(d?.shapes) ? d.shapes : [];
+                const texts : TextItem[] = Array.isArray(d?.texts)  ? d.texts  : [];
+                return [s.slide_id, { shapes, texts }];
+            });
+
+            const entries = await Promise.all(dataPromises);
+            const mapObj = Object.fromEntries(entries) as Record<string, SlideData>;
+
+            yDocRef.current?.transact(() => {
+                const yMap = yMapRef.current!;
+                const yOrder = yOrderRef.current!;
+                orders.forEach(({id}) => {
+                    const ySlide = new Y.Map();
+                    const yShapes = new Y.Array<Shape>();
+                    const yTexts  = new Y.Array<TextItem>();
+                    const d = mapObj[id] || { shapes:[], texts:[] };
+                    if (d.shapes.length) yShapes.insert(0, normalizeShapes(d.shapes));
+                    if (d.texts.length)  yTexts.insert(0,  normalizeTexts(d.texts));
+                    ySlide.set("shapes", yShapes);
+                    ySlide.set("texts", yTexts);
+                    yMap.set(id, ySlide);
+                });
+                yOrder.delete(0, yOrder.length);
+                yOrder.push(orders.map(o=>o.id));
+            }, "initial-load");
+
+            setSlides(orders);
+            setSlideData(mapObj);
+            setCurrentSlide(prev => orders.find(o => o.id === prev)?.id ?? orders[0]?.id ?? "");
+        } catch (err) {
+            console.error("슬라이드 fetch 중 오류:", err);
+        }
+    }, [API_BASE, fetchWithAuth, isDemo, presentationId]);
+
     useEffect(() => {
         if (isDemo) { fetchSlides(); return; }
 
         const ydoc = new Y.Doc();
         yDocRef.current = ydoc;
+        yMapRef.current = ydoc.getMap("slides_data") as YPresentationMap;
+        yOrderRef.current = ydoc.getArray<string>("slides_order");
 
-        const yMap = ydoc.getMap('slides_data') as YPresentationMap;
-        yMapRef.current = yMap;
+        const applyDocToReact = () => {
+            const yMap = yMapRef.current!;
+            const yOrder = yOrderRef.current!;
+            const mirror = yMapToObject(yMap);
 
-        const yOrder = ydoc.getArray<string>('slides_order');
-        ySlidesOrderRef.current = yOrder;
+            setSlideData(mirror);
 
-        const undoManager = new Y.UndoManager([yMap, yOrder], { doc: ydoc });
-        undoManagerRef.current = undoManager;
+            const ids = yOrder.toArray();
+            setSlides(ids.map((id, i) => ({ id, order: i + 1 })));
 
-        const handleUndoEvents = () => refreshUndoRedo();
-        (undoManager as any).on('stack-item-added', handleUndoEvents);
-        (undoManager as any).on('stack-item-popped', handleUndoEvents);
-        (undoManager as any).on('stack-cleared', handleUndoEvents);
-
-        const updateReactState = () => {
-            setMirrorSlideData(yMapToObject(yMap));
-            const newOrderIds = yOrder.toArray();
-            setSlides(prev => {
-                const updated = newOrderIds.map((id, index) => ({ id, order: index + 1 }));
-                if (updated.length !== prev.length || updated.some((s, i) => s.id !== prev[i]?.id)) return updated;
-                return prev;
+            ids.forEach((id, idx) => {
+                if (mirror[id]) {
+                    scheduleThumbnail(id, mirror[id], idx === 0);
+                }
             });
-            const firstId = newOrderIds[0];
-            if (firstId) {
-                const data = yMapToObject(yMap)[firstId];
-                if (data) renderSlideThumbnail(firstId, data, true);
-            }
-            refreshUndoRedo();
         };
 
-        yMap.observeDeep(updateReactState);
-        yOrder.observe(updateReactState);
+        yMapRef.current.observeDeep(applyDocToReact);
+        yOrderRef.current.observe(applyDocToReact);
+
+        const handleYUpdate = (_update: Uint8Array, origin: any) => {
+            if (isApplyingRemoteUpdate.current) return;
+            if (origin === "remote") return;
+            if (!stompClientRef.current?.connected) return;
+
+            const ySlide = getActiveYSlide();
+            if (!ySlide || !currentSlide) return;
+
+            const shapes = (ySlide.get("shapes") as Y.Array<Shape> | undefined)?.toJSON?.() || [];
+            const texts  = (ySlide.get("texts")  as Y.Array<TextItem> | undefined)?.toJSON?.() || [];
+
+        const currentSlideOrder = slides.find(s => s.id === currentSlide)?.order ?? 9999;
+        const offset = new Date().getTimezoneOffset() * 60000;
+        const lastRevisionDate = new Date(Date.now() - offset).toISOString().slice(0, -1);
+
+        const payload = {
+            slide_id: currentSlide,
+            order: currentSlideOrder,
+                last_revision_user_id: (user as any)?.id || "anonymous",
+            last_revision_date: lastRevisionDate,
+                data: JSON.stringify({ shapes: normalizeShapes(shapes as Shape[]), texts: normalizeTexts(texts as TextItem[]) }),
+            };
+
+            const body = JSON.stringify(payload);
+            if (lastBroadcastData.current === body) return;
+            lastBroadcastData.current = body;
+
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+                try {
+            stompClientRef.current?.publish({
+                        destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
+                        body
+            });
+                } catch (e) { console.error("WebSocket 데이터 전송 실패:", e); }
+            debounceTimerRef.current = null;
+            }, 250);
+        };
+
+        ydoc.on("update", handleYUpdate);
 
         getAuthToken().then((token) => {
-            const params: { [key: string]: string } = {};
-            if (token) {
-                params['token'] = token;
-            }
+            const client = new Client({
+                brokerURL: WS_URL,
+                reconnectDelay: 5000,
+                connectHeaders: token ? { 'Authorization': `Bearer ${token}` } : {},
+            });
 
-            const provider = new WebsocketProvider(
-                YJS_WS_URL,
-                `presentation-${presentationId}`,
-                ydoc,
-                { params }
-            );
+            client.onConnect = () => {
+                stompClientRef.current = client;
 
-            wsProviderRef.current = provider;
+                structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
+                    try {
+            const parsed = JSON.parse(message.body);
+                        const { type, payload } = parsed || {};
 
-            fetchSlides();
+            if (type === "SLIDE_ADD") {
+                            const { slide_id } = payload || {};
+                            yDocRef.current?.transact(() => {
+                                if (!yMapRef.current?.has(slide_id)) {
+                                    const ySlide = new Y.Map();
+                                    ySlide.set("shapes", new Y.Array<Shape>());
+                                    ySlide.set("texts", new Y.Array<TextItem>());
+                                    yMapRef.current?.set(slide_id, ySlide);
+                                }
+                                const arr = yOrderRef.current!.toArray();
+                                if (!arr.includes(slide_id)) yOrderRef.current!.push([slide_id]);
+                            }, "remote-slide-add");
+                        } else if (type === "SLIDE_DELETE" || type === "STRUCTURE_UPDATED") {
+                            const list: ReceivedSlide[] = payload?.slides || [];
+                            yDocRef.current?.transact(() => {
+                                const yMap = yMapRef.current!;
+                                const yOrder = yOrderRef.current!;
+                                const newIds = list.map(s => s.slide_id);
+                                yMap.forEach((_v, key) => { if (!newIds.includes(key)) yMap.delete(key); });
+                                list.forEach(s => {
+                                    if (!yMap.has(s.slide_id)) {
+                                        const ySlide = new Y.Map();
+                                        ySlide.set("shapes", new Y.Array<Shape>());
+                                        ySlide.set("texts", new Y.Array<TextItem>());
+                                        yMap.set(s.slide_id, ySlide);
+                                    }
+                                });
+                                yOrder.delete(0, yOrder.length);
+                                yOrder.push(list.sort((a,b)=>a.order-b.order).map(s => s.slide_id));
+                            }, "remote-structure-update");
+                        } else if (type === "TITLE_UPDATED" || type === "TITLE_UPDATE") {
+                            const newTitle = payload?.new_title;
+                            if (!payload?.presentation_id || payload.presentation_id === presentationId) {
+                                setPresentationTitle(newTitle ?? undefined);
+                                if (newTitle) document.title = `${newTitle} - Kimbanana`;
+                            }
+                        }
+                    } catch (e) { console.error("구조 메시지 처리 오류:", e); }
+                });
+
+                fetchSlides();
+
+                resubscribeSlideChannel(client);
+            };
+
+            client.onStompError = (frame) => console.error("STOMP 에러:", frame);
+            client.onWebSocketError = (event) => console.error("WebSocket 연결 에러:", event);
+
+            client.activate();
+            stompClientRef.current = client;
         });
 
         return () => {
-            yMap.unobserveDeep(updateReactState);
-            yOrder.unobserve(updateReactState);
+            yMapRef.current?.unobserveDeep(applyDocToReact);
+            yOrderRef.current?.unobserve(applyDocToReact);
+            ydoc.off("update", handleYUpdate);
 
-            (undoManager as any).off?.('stack-item-added', handleUndoEvents);
-            (undoManager as any).off?.('stack-item-popped', handleUndoEvents);
-            (undoManager as any).off?.('stack-cleared', handleUndoEvents);
+            slideSubRef.current?.unsubscribe();
+            structureSubRef.current?.unsubscribe();
+            stompClientRef.current?.deactivate();
 
-            const p = wsProviderRef.current;
-            p?.disconnect?.();
-            p?.destroy?.();
-            wsProviderRef.current = null;
-            undoManagerRef.current = null;
+            stompClientRef.current = null;
         };
-    }, [getAuthToken, presentationId, isDemo, refreshUndoRedo]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [WS_URL, presentationId, fetchSlides, getAuthToken, currentSlide, slides.length]);
 
-    const fetchSlides = async () => {
-        if (isDemo && demoPresentations[presentationId]) {
-            const demoData = demoPresentations[presentationId];
-            setPresentationTitle(demoData.title);
-            const orders: SlideOrder[] = demoData.slides
-                .map(s => ({ id: s.id, order: s.order }))
-                .sort((a, b) => a.order - b.order);
-            const newSlideData: Record<string, SlideData> = {};
-            demoData.slides.forEach(slide => { newSlideData[slide.id] = slide.data; });
-            setSlides(orders);
-            setMirrorSlideData(newSlideData);
-            setCurrentSlide(orders[0]?.id ?? "");
-            orders.forEach(({ id }, idx) => { renderSlideThumbnail(id, newSlideData[id], idx === 0); });
-            return;
-        }
+    const resubscribeSlideChannel = (client?: Client | null) => {
+        const c = client ?? stompClientRef.current;
+        if (!c || !currentSlide) return;
+        slideSubRef.current?.unsubscribe();
+        slideSubRef.current = c.subscribe(`/topic/presentation.${presentationId}.slide.${currentSlide}`, (message) => {
+            try {
+                const parsed = JSON.parse(message.body);
+                const data = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+                if (!data) return;
 
-        try {
-            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
-            if (!res.ok) {
-                console.error("슬라이드 불러오기 실패", res.status);
-                return;
-            }
-            const json = await res.json();
-            const serverTitle = json?.presentation?.presentation_title ?? json?.title ?? "";
-            setPresentationTitle(serverTitle);
-            const slideList: ReceivedSlide[] = Array.isArray(json.slides) ? json.slides : [];
-
-            const restOrder = slideList
-                .map((s): SlideOrder => ({ id: s.slide_id, order: s.order }))
-                .sort((a, b) => a.order - b.order)
-                .map(s => s.id);
-
-            yDocRef.current?.transact(() => {
-                const yOrder = ySlidesOrderRef.current!;
-                const yMap = yMapRef.current!;
-
-                restOrder.forEach(id => {
-                    if (!yMap.has(id)) {
-                        const ySlide = new Y.Map();
-                        ySlide.set('shapes', new Y.Array<Shape>());
-                        ySlide.set('texts', new Y.Array<TextItem>());
-                        yMap.set(id, ySlide);
-                    }
-                });
-
-                if (yOrder.toArray().join(',') !== restOrder.join(',')) {
-                    yOrder.delete(0, yOrder.length);
-                    yOrder.push(restOrder);
+                isApplyingRemoteUpdate.current = true;
+                try {
+                    yDocRef.current?.transact(() => {
+                        const ySlide = getActiveYSlide();
+                        if (!ySlide) return;
+                        const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+                        const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
+                        yShapes.delete(0, yShapes.length);
+                        yTexts.delete(0, yTexts.length);
+                        yShapes.insert(0, normalizeShapes(data.shapes || []));
+                        yTexts.insert(0,  normalizeTexts(data.texts  || []));
+                    }, "remote-slide-apply");
+                } finally {
+                    isApplyingRemoteUpdate.current = false;
                 }
-            });
-
-            setCurrentSlide(restOrder[0] ?? "");
-        } catch (err) {
-            console.error("슬라이드 fetch 중 오류:", err);
-        }
-    };
-
-    const normalizeShapes = (shapes: Shape[]): Shape[] => {
-        return shapes.map((shape) => {
-            const base = {
-                id: shape.id,
-                type: shape.type,
-                x: shape.x,
-                y: shape.y,
-                rotation: shape.rotation ?? 0,
-            };
-
-            if (shape.type === "circle") {
-                return { ...base, radiusX: shape.radiusX ?? 50, radiusY: shape.radiusY ?? 50, color: shape.color || "#000000" };
-            }
-            if (shape.type === "rectangle") {
-                return { ...base, width: shape.width || 0, height: shape.height || 0, color: shape.color || "#000000" };
-            }
-            if (shape.type === "triangle") {
-                return { ...base, points: shape.points || [], color: shape.color || "#000000" };
-            }
-            if (shape.type === "image") {
-                return { ...base, width: shape.width || 0, height: shape.height || 0, imageSrc: shape.imageSrc || "" };
-            }
-            if (shape.type === "star") {
-                return {
-                    ...base,
-                    numPoints: shape.numPoints ?? 5, 
-                    innerRadius: shape.innerRadius ?? 20, 
-                    outerRadius: shape.outerRadius ?? 40, 
-                    color: shape.color || "#000000" 
-                };
-            }
-            if (shape.type === "arrow") {
-                return {
-                    ...base,
-                    points: shape.points || [],
-                    pointerLength: shape.pointerLength ?? 10,
-                    pointerWidth: shape.pointerWidth ?? 10,
-                    color: shape.color || "#000000",
-                    strokeWidth: shape.strokeWidth || 3
-                };
-            }
-            if (shape.type === "line") {
-                return {
-                    ...base,
-                    points: shape.points || [], 
-                    color: shape.color || "#000000", 
-                    strokeWidth: shape.strokeWidth || 3 
-                };
-            }
-            return shape;
+            } catch (e) { console.error("슬라이드 수신 처리 오류:", e); }
         });
     };
 
-    const normalizeTexts = (texts: TextItem[]): TextItem[] => {
-        return texts.map(text => ({
-            id: text.id,
-            text: text.text,
-            x: text.x,
-            y: text.y,
-            color: text.color || "#000000",
-            fontSize: text.fontSize || 18,
-        }));
+    useEffect(() => {
+        if (!slides.length) return;
+        slides.forEach((s, idx) => {
+            const data = slideData[s.id];
+            if (data) {
+                scheduleThumbnail(s.id, data, idx === 0);
+            }
+        });
+    }, [slides, slideData, scheduleThumbnail]);
+
+
+    useEffect(() => {
+        if (!stompClientRef.current || !currentSlide) return;
+        resubscribeSlideChannel();
+    }, [currentSlide]);
+
+    const pushHistory = (prevData: SlideData, _after: { shapes: Shape[]; texts: TextItem[]; }) => {
+        setUndoStack(prev => [...prev, prevData]);
+        setRedoStack([]);
     };
 
-    const getActiveYjsSlide = useCallback((): YSlideDataMap | null => {
-        if (!yMapRef.current || !currentSlide) return null;
-        return yMapRef.current.get(currentSlide) as YSlideDataMap | null;
-    }, [currentSlide]);
+    const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
+        const ySlide = getActiveYSlide();
+        if (!ySlide) return;
+        yDocRef.current?.transact(() => {
+            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+            const cur = yShapes.toArray() as Shape[];
+            const next = typeof newShapes === "function" ? newShapes(cur) : newShapes;
+            const normalized = normalizeShapes(next);
+            const before = { shapes: cur, texts: (ySlide.get("texts") as Y.Array<TextItem>).toArray() as TextItem[] };
+            yShapes.delete(0, yShapes.length);
+            yShapes.insert(0, normalized);
+            const after = { shapes: normalized, texts: before.texts };
+            setSlideData(prev => ({ ...prev, [currentSlide]: after }));
+            pushHistory(before, after);
+        }, "canvas-edit");
+    };
+
+    const updateTexts = (newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])) => {
+        const ySlide = getActiveYSlide();
+        if (!ySlide) return;
+        yDocRef.current?.transact(() => {
+            const yTexts = ySlide.get("texts") as Y.Array<TextItem>;
+            const cur = yTexts.toArray() as TextItem[];
+            const next = typeof newTexts === "function" ? newTexts(cur) : newTexts;
+            const normalized = normalizeTexts(next);
+            const before = { shapes: (ySlide.get("shapes") as Y.Array<Shape>).toArray() as Shape[], texts: cur };
+            yTexts.delete(0, yTexts.length);
+            yTexts.insert(0, normalized);
+            const after = { shapes: before.shapes, texts: normalized };
+            setSlideData(prev => ({ ...prev, [currentSlide]: after }));
+            pushHistory(before, after);
+        }, "canvas-edit");
+    };
+
+    const handleUndo = () => {
+        if (!undoStack.length || !currentSlide) return;
+        const prev = undoStack[undoStack.length - 1];
+        setUndoStack(s => s.slice(0, -1));
+        setRedoStack(r => [...r, slideData[currentSlide] ?? { shapes:[], texts:[] }]);
+
+        const ySlide = getActiveYSlide();
+        if (!ySlide) return;
+        yDocRef.current?.transact(() => {
+            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+            const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
+            yShapes.delete(0, yShapes.length);
+            yTexts.delete(0,  yTexts.length);
+            yShapes.insert(0, normalizeShapes(prev.shapes || []));
+            yTexts.insert(0,  normalizeTexts(prev.texts  || []));
+            setSlideData(prevState => ({ ...prevState, [currentSlide]: prev }));
+        }, "undo");
+    };
+
+    const handleRedo = () => {
+        if (!redoStack.length || !currentSlide) return;
+        const next = redoStack[redoStack.length - 1];
+        setRedoStack(r => r.slice(0, -1));
+        setUndoStack(s => [...s, slideData[currentSlide] ?? { shapes:[], texts:[] }]);
+
+        const ySlide = getActiveYSlide();
+        if (!ySlide) return;
+        yDocRef.current?.transact(() => {
+            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+            const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
+            yShapes.delete(0, yShapes.length);
+            yTexts.delete(0,  yTexts.length);
+            yShapes.insert(0, normalizeShapes(next.shapes || []));
+            yTexts.insert(0,  normalizeTexts(next.texts  || []));
+            setSlideData(prevState => ({ ...prevState, [currentSlide]: next }));
+        }, "redo");
+    };
 
     const handleAddSlide = async () => {
         try {
-            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
-                method: "POST",
-                headers: { 'Accept': 'application/json' },
-            });
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, { method: "POST", headers: { 'Accept': 'application/json' }});
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const json = await res.json();
             const newId = json.slide_id as string;
 
             yDocRef.current?.transact(() => {
                 const ySlide = new Y.Map();
-                ySlide.set('shapes', new Y.Array<Shape>());
-                ySlide.set('texts', new Y.Array<TextItem>());
+                ySlide.set("shapes", new Y.Array<Shape>());
+                ySlide.set("texts", new Y.Array<TextItem>());
                 yMapRef.current?.set(newId, ySlide);
-                ySlidesOrderRef.current?.push([newId]);
+                yOrderRef.current?.push([newId]);
             }, "add-slide");
+
             setCurrentSlide(newId);
-            refreshUndoRedo();
         } catch (err) {
             console.error("슬라이드 추가 실패:", err);
         }
@@ -433,47 +558,36 @@ const MainLayout: React.FC = () => {
 
     const handleDeleteSlide = async (slideId: string) => {
         if (slides.length === 1) return;
+
         yDocRef.current?.transact(() => {
             yMapRef.current?.delete(slideId);
-            const yOrder = ySlidesOrderRef.current;
-            const index = yOrder?.toArray().indexOf(slideId);
-            if (yOrder && index !== undefined && index !== -1) yOrder.delete(index, 1);
+            const yOrder = yOrderRef.current!;
+            const idx = yOrder.toArray().indexOf(slideId);
+            if (idx !== -1) yOrder.delete(idx, 1);
         }, "delete-slide");
-        await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/${slideId}`, { method: "DELETE" });
-        const newSlides = slides.filter(s => s.id !== slideId);
-        if (currentSlide === slideId) setCurrentSlide(newSlides[0]?.id ?? "");
-        refreshUndoRedo();
-    };
 
-    const deleteSelected = () => {
-        const ySlide = getActiveYjsSlide();
-        if (!ySlide) return;
-        yDocRef.current?.transact(() => {
-        if (selectedShapeId != null) {
-                const yShapes = ySlide.get('shapes') as Y.Array<Shape>;
-                const index = yShapes.toArray().findIndex(s => String(s.id) === String(selectedShapeId));
-                if (index !== -1) yShapes.delete(index, 1);
-            setSelectedShapeId(null);
-                return;
-            }
-            if (selectedTextId != null) {
-                const yTexts = ySlide.get('texts') as Y.Array<TextItem>;
-                const index = yTexts.toArray().findIndex(t => String(t.id) === String(selectedTextId));
-                if (index !== -1) yTexts.delete(index, 1);
-                setSelectedTextId(null);
-            }
-        }, "delete-element");
-        refreshUndoRedo();
+        if (currentSlide === slideId) {
+            const after = yOrderRef.current?.toArray() ?? [];
+            setCurrentSlide(after[0] ?? "");
+        }
+
+        const newOrder = (yOrderRef.current?.toArray() ?? []).map((id, i) => ({ slide_id: id, order: i+1 }));
+        await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ presentation_id: presentationId, slides: newOrder }),
+        });
+
+        await fetchSlides();
     };
 
     const handleReorderSlides = async (newOrder: string[]) => {
         yDocRef.current?.transact(() => {
-            const yOrder = ySlidesOrderRef.current;
-            if (yOrder) {
-                yOrder.delete(0, yOrder.length);
-                yOrder.insert(0, newOrder);
-            }
+            const yOrder = yOrderRef.current!;
+            yOrder.delete(0, yOrder.length);
+            yOrder.insert(0, newOrder);
         }, "reorder-slides");
+
         await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -482,74 +596,61 @@ const MainLayout: React.FC = () => {
                 slides: newOrder.map((id, index) => ({ slide_id: id, order: index + 1 })),
             }),
         });
-        refreshUndoRedo();
-    };
 
-    const updateShapes = (newShapes: Shape[] | ((prev: Shape[]) => Shape[])) => {
-        const ySlide = getActiveYjsSlide();
-        if (!ySlide) return;
-        yDocRef.current?.transact(() => {
-            const yShapes = ySlide.get('shapes') as Y.Array<Shape>;
-            const currentShapes = yShapes.toArray() as Shape[];
-            const updatedShapes = typeof newShapes === "function" ? newShapes(currentShapes) : newShapes;
-            const normalized = normalizeShapes(updatedShapes);
-            yShapes.delete(0, yShapes.length);
-            yShapes.insert(0, normalized);
-        }, "canvas-edit");
-        refreshUndoRedo();
+        const newFirst = newOrder[0];
+        if (newFirst && slideData[newFirst]) {
+            renderThumbnail(newFirst, slideData[newFirst], true);
+        }
     };
-
-    const updateTexts = (newTexts: TextItem[] | ((prev: TextItem[]) => TextItem[])) => {
-        const ySlide = getActiveYjsSlide();
-        if (!ySlide) return;
-        yDocRef.current?.transact(() => {
-            const yTexts = ySlide.get('texts') as Y.Array<TextItem>;
-            const currentTexts = yTexts.toArray() as TextItem[];
-            const updatedTexts = typeof newTexts === "function" ? newTexts(currentTexts) : newTexts;
-            const normalized = normalizeTexts(updatedTexts);
-            yTexts.delete(0, yTexts.length);
-            yTexts.insert(0, normalized);
-        }, "canvas-edit");
-        refreshUndoRedo();
-    };
-
-    const handleUndo = () => { undoManagerRef.current?.undo(); refreshUndoRedo(); };
-    const handleRedo = () => { undoManagerRef.current?.redo(); refreshUndoRedo(); };
 
     const handleImageUpload = (imageUrl: string) => {
-        const ySlide = getActiveYjsSlide();
+        const ySlide = getActiveYSlide();
         if (!ySlide) return;
         const img = new window.Image();
         img.onload = () => {
             const newId = Date.now();
-            const newImage: Shape = {
-                id: newId,
-                type: "image",
-                x: 200,
-                y: 150,
-                width: img.width,
-                height: img.height,
-                imageSrc: imageUrl,
-            };
+            const newImage: Shape = { id: newId, type: "image", x: 200, y: 150, width: img.width, height: img.height, imageSrc: imageUrl };
             setSelectedShapeId(newId);
             yDocRef.current?.transact(() => {
-                const yShapes = ySlide.get('shapes') as Y.Array<Shape>;
+                const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
                 yShapes.push([newImage]);
             }, "add-image");
-            refreshUndoRedo();
         };
         img.src = imageUrl;
+    };
+
+    const deleteSelected = () => {
+        const ySlide = getActiveYSlide();
+        if (!ySlide) return;
+        yDocRef.current?.transact(() => {
+        if (selectedShapeId != null) {
+                const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+                const idx = yShapes.toArray().findIndex(s => String(s.id) === String(selectedShapeId));
+                if (idx !== -1) yShapes.delete(idx, 1);
+            setSelectedShapeId(null);
+            return;
+        }
+        if (selectedTextId != null) {
+                const yTexts = ySlide.get("texts") as Y.Array<TextItem>;
+                const idx = yTexts.toArray().findIndex(t => String(t.id) === String(selectedTextId));
+                if (idx !== -1) yTexts.delete(idx, 1);
+            setSelectedTextId(null);
+        }
+        }, "delete-element");
     };
 
     const handleCopyPaste = useCallback((e: KeyboardEvent) => {
         const ae = document.activeElement as HTMLElement | null;
         const isTypingInForm = !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
         if (isTypingInForm || !currentSlide) return;
+
         const isModifierPressed = e.ctrlKey || e.metaKey;
         if (!isModifierPressed) return;
-        const ySlide = getActiveYjsSlide();
+
+        const currentSlideData = slideData[currentSlide] || { shapes: [], texts: [] };
+        const ySlide = getActiveYSlide();
         if (!ySlide) return;
-        const currentSlideData = mirrorSlideData[currentSlide] || { shapes: [], texts: [] };
+
         if (e.key === 'c' || e.key === 'C') {
             if (selectedShapeId != null) {
                 e.preventDefault();
@@ -561,74 +662,85 @@ const MainLayout: React.FC = () => {
                 if (textToCopy) setClipboardData({ shapes: [], texts: [textToCopy] });
             }
         }
+
         if (e.key === 'v' || e.key === 'V') {
-            if (clipboardData && (clipboardData.shapes.length > 0 || clipboardData.texts.length > 0)) {
-                e.preventDefault();
-                const newShapes: Shape[] = clipboardData.shapes.map(s => ({
-                    ...s, id: Date.now() + Math.random(), x: (s.x ?? 0) + 10, y: (s.y ?? 0) + 10,
-                }));
-                const newTexts: TextItem[] = clipboardData.texts.map(t => ({
-                    ...t, id: Date.now() + Math.random(), x: (t.x ?? 0) + 10, y: (t.y ?? 0) + 10,
-                }));
-                yDocRef.current?.transact(() => {
-                    const yShapes = ySlide.get('shapes') as Y.Array<Shape>;
-                    const yTexts = ySlide.get('texts') as Y.Array<TextItem>;
-                    if (newShapes.length > 0) yShapes.push(newShapes);
-                    if (newTexts.length > 0) yTexts.push(newTexts);
-                    if (newShapes.length > 0) setSelectedShapeId(String(newShapes[0].id));
-                    else if (newTexts.length > 0) setSelectedTextId(String(newTexts[0].id));
-                }, "paste");
-                const updatedClipboard = { shapes: newShapes, texts: newTexts };
-                setClipboardData(updatedClipboard);
-                refreshUndoRedo();
-            }
+            if (!clipboardData || (clipboardData.shapes.length === 0 && clipboardData.texts.length === 0)) return;
+            e.preventDefault();
+            const newShapes: Shape[] = clipboardData.shapes.map(s => ({ ...s, id: Date.now() + Math.random(), x: (s.x ?? 0)+10, y: (s.y ?? 0)+10 }));
+            const newTexts : TextItem[] = clipboardData.texts.map(t => ({ ...t, id: Date.now() + Math.random(), x: (t.x ?? 0)+10, y: (t.y ?? 0)+10 }));
+            yDocRef.current?.transact(() => {
+                const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+                const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
+                if (newShapes.length) yShapes.push(newShapes);
+                if (newTexts.length)  yTexts.push(newTexts);
+                if (newShapes.length) setSelectedShapeId(String(newShapes[0].id));
+                else if (newTexts.length) setSelectedTextId(String(newTexts[0].id));
+            }, "paste");
+            setClipboardData({ shapes: newShapes, texts: newTexts });
         }
-    }, [currentSlide, mirrorSlideData, selectedShapeId, selectedTextId, clipboardData, getActiveYjsSlide, refreshUndoRedo]);
+    }, [currentSlide, slideData, selectedShapeId, selectedTextId, clipboardData]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             const ae = document.activeElement as HTMLElement | null;
             const isTypingInForm = !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
             if (isTypingInForm) return;
+
             handleCopyPaste(e);
             if (e.defaultPrevented) return;
+
             const isBackspaceOrDelete = e.key === "Backspace" || e.key === "Delete";
             if (!isBackspaceOrDelete || isTyping) return;
+
             if (selectedShapeId != null || selectedTextId != null) {
                 e.preventDefault();
                 deleteSelected();
                 return;
             }
+
             if (activeTool !== "cursor") return;
-            if (slides.length > 1) {
+            if (slides.length > 1 && currentSlide) {
                 e.preventDefault();
                 handleDeleteSlide(currentSlide);
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [currentSlide, slides, isTyping, selectedShapeId, selectedTextId, activeTool, handleCopyPaste]);
+    }, [currentSlide, slides.length, isTyping, selectedShapeId, selectedTextId, activeTool, handleCopyPaste]);
 
     const handleSaveHistory = async () => {
         try {
-            if (!yDocRef.current) {
-                alert("Yjs 문서가 준비되지 않았습니다.");
-                return false;
-            }
-            const yDocState = Y.encodeStateAsUpdate(yDocRef.current);
+            if (!slides.length) { alert("저장할 슬라이드가 없습니다."); return false; }
+            const offset = new Date().getTimezoneOffset() * 60000;
+            const isoLocal = new Date(Date.now() - offset).toISOString().slice(0, -1);
+
             const payload = {
-                last_revision_user_id: (user as any)?.id || "anonymous",
-                presentation_id: presentationId,
-                yjs_document_state_base64: uint8ToBase64(new Uint8Array(yDocState)),
+                last_revision_user_id: user?.id || "anonymous",
+                slides: slides.map(s => {
+                    const data = slideData[s.id] ?? { shapes: [], texts: [] };
+                    const dataString = JSON.stringify({
+                        shapes: (data.shapes ?? []).map(shape => ({
+                            id: shape.id, type: shape.type, x: shape.x, y: shape.y, rotation: shape.rotation ?? 0,
+                            ...(shape.type === "rectangle" && { width: shape.width || 0, height: shape.height || 0, color: shape.color || "#000000" }),
+                            ...(shape.type === "circle"    && { radiusX: (shape as any).radiusX ?? (shape as any).radius ?? 50, radiusY: (shape as any).radiusY ?? (shape as any).radius ?? 50, color: shape.color || "#000000" }),
+                            ...(shape.type === "triangle"  && { points: shape.points || [], color: shape.color || "#000000" }),
+                            ...(shape.type === "image"     && { width: shape.width || 0, height: shape.height || 0, imageSrc: shape.imageSrc || "" }),
+                        })),
+                        texts: (data.texts ?? []).map(t => ({ id: t.id, text: t.text, x: t.x, y: t.y, color: t.color || "#000000", fontSize: t.fontSize || 18 })),
+                    });
+                    return { slide_id: s.id, order: s.order, last_revision_user_id: user?.id || "anonymous", last_revision_date: isoLocal, data: dataString };
+                }),
             };
-            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/histories/yjs-snapshot`, {
+
+            const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/histories`, {
                 method: "POST",
+                mode: "cors",
+                credentials: "omit",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
             if (!res.ok) {
-                let detail = "";
-                try { detail = await res.text(); } catch { /* empty */ }
+                const detail = await res.text().catch(()=> "");
                 console.error("히스토리 저장 실패:", res.status, detail);
                 alert(`히스토리 저장 실패 (${res.status})`);
                 return false;
@@ -646,18 +758,13 @@ const MainLayout: React.FC = () => {
             await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides/title`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    presentation_id: presentationId,
-                    new_title: title,
-                }),
+                body: JSON.stringify({ presentation_id: presentationId, new_title: title }),
             });
             setPresentationTitle(title);
         } catch (err) {
             console.error("프레젠테이션 제목 업데이트 실패:", err);
         }
     };
-
-    const currentSlideData = mirrorSlideData[currentSlide] || { shapes: [], texts: [] };
 
     return (
         <div className="main-layout" ref={containerRef}>
@@ -669,7 +776,7 @@ const MainLayout: React.FC = () => {
                 onExitFullscreen={exit}
                 title={presentationTitle}
                 onTitleChange={setPresentationTitle}
-                onTitleSave={async (t) => { await savePresentationTitle(t); }}
+                onTitleSave={savePresentationTitle}
                 onSaveHistory={handleSaveHistory}
                 onDownloadPdf={handleDownloadPdf}
             />
@@ -684,20 +791,22 @@ const MainLayout: React.FC = () => {
                          onReorderSlides={handleReorderSlides}
                 />
                 <div className="canvas-container">
-                    {currentSlide && (
+                    {currentSlide && slideData[currentSlide] && (
                         <Canvas
                             activeTool={activeTool}
                             selectedColor={selectedColor}
                             setSelectedColor={setSelectedColor}
                             setActiveTool={setActiveTool}
-                            shapes={currentSlideData.shapes}
-                            texts={currentSlideData.texts}
+                            shapes={slideData[currentSlide]?.shapes || []}
+                            texts={slideData[currentSlide]?.texts || []}
                             setShapes={(updater) => updateShapes(updater)}
                             setTexts={(updater) => updateTexts(updater)}
                             currentSlide={currentSlide}
                             updateThumbnail={(slideId, dataUrl) => {
-                                setThumbnails(prev => ({...prev, [slideId]: dataUrl}));
+                                const firstSlideId = slides[0]?.id;
+                                updateThumbnail(slideId, dataUrl, firstSlideId);
                             }}
+                            // 레거시 시그니처 유지: 내부적으로는 Yjs가 publish 처리
                             sendEdit={() => {}}
                             setIsTyping={setIsTyping}
                             defaultFontSize={defaultFontSize}
@@ -728,8 +837,8 @@ const MainLayout: React.FC = () => {
                         setEraserMode={setEraserMode}
                         onUndo={handleUndo}
                         onRedo={handleRedo}
-                        canUndo={canUndo}
-                        canRedo={canRedo}
+                        canUndo={undoStack.length > 0}
+                        canRedo={redoStack.length > 0}
                         getAuthToken={getAuthToken}
                     />
                 </div>

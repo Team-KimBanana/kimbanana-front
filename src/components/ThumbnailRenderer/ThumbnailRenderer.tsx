@@ -14,7 +14,7 @@ const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ slideId, slideDat
     const stageRef = useRef<Konva.Stage>(null);
     const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
 
-    // 이미지 프리로드
+
     useEffect(() => {
         const loadImages = async () => {
             const imagePromises = slideData.shapes
