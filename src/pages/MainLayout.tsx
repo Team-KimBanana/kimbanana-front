@@ -458,6 +458,7 @@ const MainLayout: React.FC = () => {
         resubscribeSlideChannel();
     }, [currentSlide]);
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const pushHistory = (prevData: SlideData, _after: { shapes: Shape[]; texts: TextItem[]; }) => {
         setUndoStack(prev => [...prev, prevData]);
         setRedoStack([]);
