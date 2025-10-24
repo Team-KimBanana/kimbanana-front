@@ -37,7 +37,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
     };
 
     const handleOAuthLogin = (provider: 'google' | 'github') => {
-        window.location.href = `/oauth2/authorization/${provider}`;
+        window.location.href = `kimbanana/app/oauth2/authorization/${provider}`;
     };
 
     const isFormValid = formData.email && formData.password;
