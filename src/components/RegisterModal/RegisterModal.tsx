@@ -141,7 +141,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
     };
 
     const handleOAuthRegister = (provider: 'google' | 'github') => {
-        window.location.href = `/api/auth/${provider}`;
+        window.location.href = `/kimbanana/app/oauth2/authorization/${provider}`;
     };
 
     const isFormValid = formData.name && formData.email && formData.password &&
