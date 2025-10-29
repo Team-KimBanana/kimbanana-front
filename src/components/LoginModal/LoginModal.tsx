@@ -9,16 +9,24 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) => {
-    const { login, isLoading, error, clearError } = useAuth();
+    const { login, isLoading, error, clearError, setOAuthSuccessCallback } = useAuth();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
     });
     const [showPassword, setShowPassword] = useState(false);
+    const [isOAuthLoading, setIsOAuthLoading] = useState(false);
 
     useEffect(() => {
         clearError();
-    }, []); // 모달이 열릴 때만 실행
+        setOAuthSuccessCallback(() => {
+            onClose();
+        });
+        
+        return () => {
+            setOAuthSuccessCallback(undefined);
+        };
+    }, [clearError, setOAuthSuccessCallback, onClose]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -37,6 +45,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
     };
 
     const handleOAuthLogin = (provider: 'google' | 'github') => {
+        setIsOAuthLoading(true);
         window.location.href = `/kimbanana/app/oauth2/authorization/${provider}`;
     };
 
@@ -115,7 +124,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
                     <button
                         type="submit"
                         className="login-button"
-                        disabled={!isFormValid || isLoading}
+                        disabled={!isFormValid || isLoading || isOAuthLoading}
                     >
                         {isLoading ? '로그인 중...' : '로그인'}
                     </button>
@@ -129,19 +138,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
                     <button
                         className="social-button google-button"
                         onClick={() => handleOAuthLogin('google')}
-                        disabled={isLoading}
+                        disabled={isLoading || isOAuthLoading}
                     >
                         <Icon icon="logos:google-icon" width="20" />
-                        Google로 로그인
+                        {isOAuthLoading ? '로그인 중...' : 'Google로 로그인'}
                     </button>
 
                     <button
                         className="social-button github-button"
                         onClick={() => handleOAuthLogin('github')}
-                        disabled={isLoading}
+                        disabled={isLoading || isOAuthLoading}
                     >
                         <Icon icon="logos:github-icon" width="20" />
-                        GitHub로 로그인
+                        {isOAuthLoading ? '로그인 중...' : 'GitHub로 로그인'}
                     </button>
                 </div>
 

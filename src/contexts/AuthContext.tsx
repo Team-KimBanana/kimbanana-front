@@ -7,6 +7,9 @@ interface AuthContextType extends AuthState {
     logout: () => Promise<void>;
     clearError: () => void;
     getAuthToken: () => Promise<string | null>;
+    loadUserFromOAuth: () => Promise<boolean>;
+    onOAuthSuccess?: () => void;
+    setOAuthSuccessCallback: (callback: (() => void) | undefined) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,6 +81,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(authReducer, initialState);
     const refreshRetryCount = React.useRef(0);
+    const oAuthSuccessCallback = React.useRef<(() => void) | undefined>(undefined);
 
     const API_BASE_URL = import.meta.env.DEV
         ? '/api'
@@ -97,13 +101,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
     }, []);
 
+    const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+                credentials: 'include',
+            });
+
+            if (response.ok) {
+                const userInfo: UserInfo = await response.json();
+                const user: User = {
+                    id: userInfo.id,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    profileImage: undefined,
+                    createdAt: new Date().toISOString(),
+                };
+                dispatch({ type: 'LOAD_USER', payload: user });
+                return true;
+            } else {
+                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status);
+                return false;
+            }
+        } catch (error) {
+            console.error('OAuth 로그인 후 사용자 정보 조회 중 오류:', error);
+            return false;
+        }
+    }, [API_BASE_URL]);
+
+    const handleOAuthCallback = useCallback(async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const oauthSuccess = urlParams.get('oauth_success');
+        const oauthError = urlParams.get('oauth_error');
+        
+        if (oauthSuccess === 'true') {
+            const success = await loadUserFromOAuth();
+            if (success) {
+                console.log('OAuth 로그인 성공');
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
+                }
+            } else {
+                console.error('OAuth 로그인 후 사용자 정보 로드 실패');
+                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
+            }
+            
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        } else if (oauthError) {
+            console.error('OAuth 로그인 실패:', oauthError);
+            dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
+            
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    }, [loadUserFromOAuth]);
+
     useEffect(() => {
         const accessToken = localStorage.getItem('accessToken');
         if (accessToken) {
-
             loadUser(accessToken);
+        } else {
+            handleOAuthCallback();
         }
-    }, [getAuthToken]);
+    }, [getAuthToken, handleOAuthCallback]);
 
     const loadUser = async (token: string) => {
         try {
@@ -314,6 +378,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         dispatch({ type: 'CLEAR_ERROR' });
     }, []);
 
+    const setOAuthSuccessCallback = useCallback((callback: (() => void) | undefined) => {
+        oAuthSuccessCallback.current = callback;
+    }, []);
+
     const value: AuthContextType = {
         ...state,
         login,
@@ -321,6 +389,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logout,
         clearError,
         getAuthToken,
+        loadUserFromOAuth,
+        onOAuthSuccess: oAuthSuccessCallback.current,
+        setOAuthSuccessCallback,
     };
 
     return (
