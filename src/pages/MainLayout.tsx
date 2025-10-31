@@ -337,7 +337,7 @@ const MainLayout: React.FC = () => {
         ydoc.on("update", handleYUpdate);
 
         getAuthToken().then((token) => {
-            console.log('🔐 STOMP 연결 시도:', {
+            console.log('STOMP 연결 시도:', {
                 brokerURL: WS_URL,
                 hasToken: !!token,
                 hasCookies: document.cookie.length > 0,
@@ -350,7 +350,6 @@ const MainLayout: React.FC = () => {
             });
 
             client.onConnect = () => {
-                console.log('✅ STOMP 연결 성공');
                 stompClientRef.current = client;
 
                 structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
@@ -404,14 +403,14 @@ const MainLayout: React.FC = () => {
             };
 
             client.onStompError = (frame) => {
-                console.error("❌ STOMP 에러:", {
+                console.error("STOMP 에러:", {
                     command: frame.command,
                     headers: frame.headers,
                     body: frame.body,
                 });
             };
             client.onWebSocketError = (event) => {
-                console.error("❌ WebSocket 연결 에러:", event);
+                console.error("WebSocket 연결 에러:", event);
             };
 
             client.activate();
