@@ -201,6 +201,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 return true;
             } else {
                 const errorText = await response.text().catch(() => '');
+                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
                 return false;
             }
         } catch (error) {
