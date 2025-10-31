@@ -87,118 +87,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ? '/api'
         : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
-    const getAuthToken = useCallback(async (): Promise<string | null> => {
-        const accessToken = localStorage.getItem('accessToken');
-        if (accessToken) {
-            return accessToken;
-        }
-
-        const success = await attemptTokenRefresh(true);
-        if (success) {
-            return localStorage.getItem('accessToken');
-        }
-
-        return null;
-    }, []);
-
-    const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                },
-                credentials: 'include',
-            });
-
-            if (response.ok) {
-                const userInfo: UserInfo = await response.json();
-                const user: User = {
-                    id: userInfo.id,
-                    email: userInfo.email,
-                    name: userInfo.name,
-                    profileImage: undefined,
-                    createdAt: new Date().toISOString(),
-                };
-                dispatch({ type: 'LOAD_USER', payload: user });
-                return true;
-            } else {
-                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status);
-                return false;
-            }
-        } catch (error) {
-            console.error('OAuth 로그인 후 사용자 정보 조회 중 오류:', error);
-            return false;
-        }
-    }, [API_BASE_URL]);
-
-    const handleOAuthCallback = useCallback(async () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const oauthSuccess = urlParams.get('oauth_success');
-        const oauthError = urlParams.get('oauth_error');
-        
-        if (oauthSuccess === 'true') {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                console.log('OAuth 로그인 성공');
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
-                }
-            } else {
-                console.error('OAuth 로그인 후 사용자 정보 로드 실패');
-                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
-            }
-            
-            const newUrl = window.location.pathname;
-            window.history.replaceState({}, document.title, newUrl);
-        } else if (oauthError) {
-            console.error('OAuth 로그인 실패:', oauthError);
-            dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
-            
-            const newUrl = window.location.pathname;
-            window.history.replaceState({}, document.title, newUrl);
-        }
-    }, [loadUserFromOAuth]);
-
-    useEffect(() => {
-        const accessToken = localStorage.getItem('accessToken');
-        if (accessToken) {
-            loadUser(accessToken);
-        } else {
-            handleOAuthCallback();
-        }
-    }, [getAuthToken, handleOAuthCallback]);
-
-    const loadUser = async (token: string) => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json',
-                },
-                credentials: "include",
-            });
-
-            if (response.ok) {
-                const userInfo: UserInfo = await response.json();
-                const user: User = {
-                    id: userInfo.id,
-                    email: userInfo.email,
-                    name: userInfo.name,
-                    profileImage: undefined,
-                    createdAt: new Date().toISOString(),
-                };
-                dispatch({ type: 'LOAD_USER', payload: user });
-            } else {
-                await attemptTokenRefresh(false);
-            }
-        } catch (error) {
-            console.error('사용자 정보 로드 실패:', error);
-            clearTokens();
-        }
-    };
-
-    const attemptTokenRefresh = async (isSilent: boolean): Promise<boolean> => {
+    const attemptTokenRefresh = useCallback(async (isSilent: boolean, loadUserFn?: (token: string) => Promise<void>): Promise<boolean> => {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
             clearTokens();
@@ -218,8 +107,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const data: AuthResponse = await response.json();
                 localStorage.setItem('accessToken', data.accessToken);
                 localStorage.setItem('refreshToken', data.refreshToken);
-                if (!isSilent) {
-                    await loadUser(data.accessToken);
+                if (!isSilent && loadUserFn) {
+                    await loadUserFn(data.accessToken);
                 }
                 return true;
             } else {
@@ -231,13 +120,167 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             clearTokens();
             return false;
         }
-    };
+    }, [API_BASE_URL]);
+
+    const getAuthToken = useCallback(async (): Promise<string | null> => {
+        const accessToken = localStorage.getItem('accessToken');
+        if (accessToken) {
+            return accessToken;
+        }
+
+        const success = await attemptTokenRefresh(true);
+        if (success) {
+            return localStorage.getItem('accessToken');
+        }
+
+        return null;
+    }, [attemptTokenRefresh]);
 
     const clearTokens = () => {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         dispatch({ type: 'LOGOUT' });
     };
+
+    const loadUser = useCallback(async (token: string) => {
+        try {
+            console.log('🔐 사용자 정보 로드 시도 (토큰 기반):', `${API_BASE_URL}/auth/profile`);
+            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json',
+                },
+                credentials: "include",
+            });
+
+            console.log('🔐 사용자 정보 응답:', {
+                status: response.status,
+                ok: response.ok,
+                statusText: response.statusText
+            });
+
+            if (response.ok) {
+                const userInfo: UserInfo = await response.json();
+                console.log('🔐 사용자 정보:', userInfo);
+                const user: User = {
+                    id: userInfo.id,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    profileImage: undefined,
+                    createdAt: new Date().toISOString(),
+                };
+                dispatch({ type: 'LOAD_USER', payload: user });
+                console.log('✅ 사용자 로드 성공');
+            } else {
+                console.log('⚠️ 토큰 기반 사용자 정보 조회 실패, 토큰 재발급 시도');
+                await attemptTokenRefresh(false, loadUser);
+            }
+        } catch (error) {
+            console.error('❌ 사용자 정보 로드 실패:', error);
+            clearTokens();
+        }
+    }, [API_BASE_URL, attemptTokenRefresh]);
+
+    const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
+        try {
+            console.log('🔐 OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
+            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+                credentials: 'include',
+            });
+
+            console.log('🔐 OAuth 사용자 정보 응답:', {
+                status: response.status,
+                ok: response.ok,
+                statusText: response.statusText
+            });
+
+            if (response.ok) {
+                const userInfo: UserInfo = await response.json();
+                console.log('🔐 OAuth 사용자 정보:', userInfo);
+                const user: User = {
+                    id: userInfo.id,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    profileImage: undefined,
+                    createdAt: new Date().toISOString(),
+                };
+                dispatch({ type: 'LOAD_USER', payload: user });
+                console.log('✅ OAuth 로그인 성공 - 사용자 상태 업데이트 완료');
+                return true;
+            } else {
+                const errorText = await response.text().catch(() => '');
+                console.error('❌ OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
+                return false;
+            }
+        } catch (error) {
+            console.error('❌ OAuth 로그인 후 사용자 정보 조회 중 오류:', error);
+            return false;
+        }
+    }, [API_BASE_URL]);
+
+    const handleOAuthCallback = useCallback(async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const oauthSuccess = urlParams.get('oauth_success');
+        const oauthError = urlParams.get('oauth_error');
+        
+        console.log('🔐 OAuth 콜백 처리 시작:', {
+            url: window.location.href,
+            search: window.location.search,
+            oauthSuccess,
+            oauthError,
+            hasCookies: document.cookie.length > 0
+        });
+        
+        if (oauthSuccess === 'true' || oauthSuccess === '1') {
+            console.log('✅ OAuth 성공 파라미터 확인됨');
+            const success = await loadUserFromOAuth();
+            if (success) {
+                console.log('✅ OAuth 로그인 완료');
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
+                }
+            } else {
+                console.error('❌ OAuth 로그인 후 사용자 정보 로드 실패');
+                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
+            }
+            
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        } else if (oauthError) {
+            console.error('❌ OAuth 로그인 실패:', oauthError);
+            dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
+            
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        } else {
+            console.log('⚠️ OAuth 파라미터 없음 - 쿠키로 사용자 정보 조회 시도');
+            const success = await loadUserFromOAuth();
+            if (success) {
+                console.log('✅ 쿠키 기반 로그인 성공');
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
+                }
+            } else {
+                console.log('ℹ️ 쿠키로 사용자 정보를 가져올 수 없음 - 로그인하지 않은 상태로 간주');
+            }
+        }
+    }, [loadUserFromOAuth]);
+
+    useEffect(() => {
+        console.log('🔐 AuthProvider 초기화 - 사용자 인증 상태 확인');
+        const accessToken = localStorage.getItem('accessToken');
+        if (accessToken) {
+            console.log('🔐 AccessToken 발견 - 일반 로그인 방식으로 사용자 로드');
+            loadUser(accessToken);
+        } else {
+            console.log('🔐 AccessToken 없음 - OAuth 콜백 처리 시도');
+            handleOAuthCallback();
+        }
+    }, [getAuthToken, handleOAuthCallback, loadUser]);
 
     const login = async (credentials: SignInRequest): Promise<{ success: boolean; error?: string }> => {
         dispatch({ type: 'LOGIN_START' });
