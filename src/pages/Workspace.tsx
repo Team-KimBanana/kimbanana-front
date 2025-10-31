@@ -77,6 +77,7 @@ const Workspace: React.FC = () => {
             const response = await fetch(thumbnailUrl, {
                 method: 'GET',
                 headers,
+                credentials: 'include',
             });
             
             if (!response.ok) {
@@ -124,6 +125,7 @@ const Workspace: React.FC = () => {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(requestData),
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -190,6 +192,7 @@ const Workspace: React.FC = () => {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(requestData),
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -222,6 +225,7 @@ const Workspace: React.FC = () => {
             const response = await fetch(`${API_BASE_URL}/workspace/presentations/${presentationId}`, {
                 method: 'DELETE',
                 headers,
+                credentials: 'include',
             });
 
             if (!response.ok) {

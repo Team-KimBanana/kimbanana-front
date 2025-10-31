@@ -93,7 +93,7 @@ const History: React.FC = () => {
         return fetch(url, {
             ...options,
             mode: "cors",
-            credentials: "omit",
+            credentials: "include",
             headers,
         });
     }, [getAuthToken]);

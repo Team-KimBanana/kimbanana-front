@@ -47,7 +47,11 @@ const MainLayout: React.FC = () => {
         const accessToken = await getAuthToken();
         const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
         if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-        return fetch(url, { ...options, headers });
+        return fetch(url, { 
+            ...options, 
+            headers,
+            credentials: 'include',
+        });
     }, [getAuthToken]);
 
     const [activeTool, setActiveTool] = useState("cursor");
@@ -333,6 +337,12 @@ const MainLayout: React.FC = () => {
         ydoc.on("update", handleYUpdate);
 
         getAuthToken().then((token) => {
+            console.log('🔐 STOMP 연결 시도:', {
+                brokerURL: WS_URL,
+                hasToken: !!token,
+                hasCookies: document.cookie.length > 0,
+            });
+            
             const client = new Client({
                 brokerURL: WS_URL,
                 reconnectDelay: 5000,
@@ -340,6 +350,7 @@ const MainLayout: React.FC = () => {
             });
 
             client.onConnect = () => {
+                console.log('✅ STOMP 연결 성공');
                 stompClientRef.current = client;
 
                 structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
@@ -392,8 +403,16 @@ const MainLayout: React.FC = () => {
                 resubscribeSlideChannel(client);
             };
 
-            client.onStompError = (frame) => console.error("STOMP 에러:", frame);
-            client.onWebSocketError = (event) => console.error("WebSocket 연결 에러:", event);
+            client.onStompError = (frame) => {
+                console.error("❌ STOMP 에러:", {
+                    command: frame.command,
+                    headers: frame.headers,
+                    body: frame.body,
+                });
+            };
+            client.onWebSocketError = (event) => {
+                console.error("❌ WebSocket 연결 에러:", event);
+            };
 
             client.activate();
             stompClientRef.current = client;
@@ -736,7 +755,7 @@ const MainLayout: React.FC = () => {
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/histories`, {
                 method: "POST",
                 mode: "cors",
-                credentials: "omit",
+                credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });

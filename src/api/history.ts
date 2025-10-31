@@ -31,7 +31,7 @@ export async function fetchHistoryList(presentationId: string, token: string | n
 
     let res: Response | null = null;
     for (const u of urls) {
-        res = await fetch(u, { mode: "cors", credentials: "omit", headers });
+        res = await fetch(u, { mode: "cors", credentials: "include", headers });
         if (res.ok) break;
     }
 
@@ -66,7 +66,7 @@ export async function fetchHistorySlides(
 
     let res: Response | null = null;
     for (const u of urls) {
-        res = await fetch(u, { mode: "cors", credentials: "omit", headers });
+        res = await fetch(u, { mode: "cors", credentials: "include", headers });
         if (res.ok) break;
     }
 
