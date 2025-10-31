@@ -183,6 +183,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
+            // 1. 먼저 쿠키 기반으로 토큰 요청 시도 (여러 가능한 엔드포인트)
+            const tokenEndpoints = [
+                `${API_BASE_URL}/auth/token`,
+                `${API_BASE_URL}/auth/session`,
+                `${API_BASE_URL}/auth/oauth/token`,
+            ];
+
+            let tokenReceived = false;
+            for (const endpoint of tokenEndpoints) {
+                try {
+                    console.log('🔐 OAuth 토큰 요청 시도 (쿠키 기반):', endpoint);
+                    const tokenResponse = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'include',
+                    });
+
+                    if (tokenResponse.ok) {
+                        const tokenData: AuthResponse = await tokenResponse.json();
+                        console.log('✅ OAuth 토큰 받기 성공');
+                        localStorage.setItem('accessToken', tokenData.accessToken);
+                        localStorage.setItem('refreshToken', tokenData.refreshToken);
+                        tokenReceived = true;
+                        break;
+                    }
+                } catch (err) {
+                    console.log(`⚠️ ${endpoint} 시도 실패:`, err);
+                    continue;
+                }
+            }
+
+            if (!tokenReceived) {
+                console.log('⚠️ 토큰 엔드포인트를 찾을 수 없음, 프로필 조회로 진행');
+            }
+
+            // 2. 사용자 정보 조회
             console.log('🔐 OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
             const response = await fetch(`${API_BASE_URL}/auth/profile`, {
                 method: 'GET',
