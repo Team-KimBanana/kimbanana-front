@@ -144,7 +144,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUser = useCallback(async (token: string) => {
         try {
-            console.log('사용자 정보 로드 시도 (토큰 기반):', `${API_BASE_URL}/auth/profile`);
             const response = await fetch(`${API_BASE_URL}/auth/profile`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -173,41 +172,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
-            console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
-            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
-                method: 'GET',
+            const tokenResponse = await fetch(`${API_BASE_URL}/auth/sign-in`, {
+                method: 'POST',
                 headers: {
+                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
                 credentials: 'include',
             });
 
-            console.log('OAuth 사용자 정보 응답:', {
-                status: response.status,
-                ok: response.ok,
-                statusText: response.statusText
-            });
+            if (tokenResponse.ok) {
+                const tokenData: AuthResponse = await tokenResponse.json();
+                localStorage.setItem('accessToken', tokenData.accessToken);
+                localStorage.setItem('refreshToken', tokenData.refreshToken);
 
-            if (response.ok) {
-                const userInfo: UserInfo = await response.json();
-                const user: User = {
-                    id: userInfo.id,
-                    email: userInfo.email,
-                    name: userInfo.name,
-                    profileImage: undefined,
-                    createdAt: new Date().toISOString(),
-                };
-                dispatch({ type: 'LOAD_USER', payload: user });
+                await loadUser(tokenData.accessToken);
                 return true;
             } else {
-                const errorText = await response.text().catch(() => '');
-                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
+                const errorText = await tokenResponse.text().catch(() => '');
+                console.error('OAuth 로그인 후 토큰 발급 실패:', tokenResponse.status, errorText);
                 return false;
             }
         } catch (error) {
+            console.error('OAuth 로그인 후 토큰 발급 중 오류:', error);
             return false;
         }
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, loadUser]);
 
     const handleOAuthCallback = useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
