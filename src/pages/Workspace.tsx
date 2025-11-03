@@ -15,9 +15,7 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || '';
 const toAbsolute = (url?: string | null) => {
     if (!url) return '';
 
-    // 절대 URL인 경우 API 프록시를 통해 로드
     if (/^https?:\/\//i.test(url)) {
-        // daisy.wisoft.io 도메인인 경우 프록시로 변환
         if (url.includes('daisy.wisoft.io/kimbanana/app')) {
             const path = url.replace(/^https?:\/\/daisy\.wisoft\.io\/kimbanana\/app/, '');
             return import.meta.env.DEV ? `/api${path}` : url;
@@ -42,26 +40,19 @@ const Workspace: React.FC = () => {
     const [thumbnailCache, setThumbnailCache] = useState<{ [key: string]: string }>({});
     const [demoThumbnails, setDemoThumbnails] = useState<{ [key: string]: string }>({});
 
-    // 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
-    const API_BASE_URL = import.meta.env.DEV
-        ? '/api'  // 개발 환경: Vite 프록시 사용
-        : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : 'http://localhost:8080/api');
 
-    // 검색 필터링 (제목 기준)
     const filtered = presentations.filter(p => p.title.includes(search));
 
-    // 페이지네이션 로직
     const ITEMS_PER_PAGE = 5;
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const startIndex = currentPage * ITEMS_PER_PAGE;
     const currentItems = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
 
-    // 인증 헤더를 포함하여 썸네일 이미지 가져오기
     const fetchThumbnailWithAuth = async (thumbnailUrl: string): Promise<string> => {
         if (!thumbnailUrl) return '/kimbanana/ui/assets/default-thumbnail.png';
 
-        // 이미 캐시에 있으면 반환
         if (thumbnailCache[thumbnailUrl]) {
             return thumbnailCache[thumbnailUrl];
         }
@@ -87,7 +78,6 @@ const Workspace: React.FC = () => {
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
 
-            // 캐시에 저장
             setThumbnailCache(prev => ({
                 ...prev,
                 [thumbnailUrl]: blobUrl
@@ -99,16 +89,14 @@ const Workspace: React.FC = () => {
         }
     };
 
-    // API 함수들
     const fetchPresentations = async () => {
         try {
             setIsLoading(true);
             setError(null);
 
             const headers: Record<string, string> = {
-                'Accept': 'application/json',
+                'Accept': '*/*', // Postman과 동일하게
             };
-
 
             const accessToken = localStorage.getItem('accessToken');
 
@@ -116,38 +104,52 @@ const Workspace: React.FC = () => {
                 headers['Authorization'] = `Bearer ${accessToken}`;
             }
 
-
-            const userId = user?.id || "";
-            const url = userId 
-                ? `${API_BASE_URL}/workspace/presentations/list?user_id=${encodeURIComponent(userId)}`
-                : `${API_BASE_URL}/workspace/presentations/list`;
-
-
-            let response = await fetch(url, {
+            const url = `${API_BASE_URL}/workspace/presentations/list`;
+            console.log('프레젠테이션 목록 요청:', {
+                url,
                 method: 'GET',
+                hasToken: !!accessToken,
                 headers,
-                credentials: 'include',
             });
 
-
-            if (!response.ok && response.status === 405) {
-                const requestData = {
-                    user_id: userId
-                };
-                headers['Content-Type'] = 'application/json';
-                response = await fetch(`${API_BASE_URL}/workspace/presentations/list`, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(requestData),
-                    credentials: 'include',
-                });
-            }
+            // credentials: 'include' 제거 - 쿠키(JSESSIONID) 문제 가능성
+            const response = await fetch(url, {
+                method: 'GET',
+                headers,
+                // credentials: 'include' 제거 (쿠키 없이 토큰만 사용)
+            });
 
             if (!response.ok) {
+                // 에러 응답 본문 확인
+                let errorBody = '';
+                let errorMessage = '';
+                try {
+                    errorBody = await response.text();
+                    try {
+                        const errorJson = JSON.parse(errorBody);
+                        errorMessage = errorJson.message || errorJson.error || errorBody;
+                        console.error('에러 응답:', {
+                            status: response.status,
+                            statusText: response.statusText,
+                            error: errorJson,
+                        });
+                    } catch {
+                        errorMessage = errorBody;
+                        console.error('에러 응답 (텍스트):', {
+                            status: response.status,
+                            statusText: response.statusText,
+                            body: errorBody,
+                        });
+                    }
+                } catch (e) {
+                    console.error('에러 응답 읽기 실패:', e);
+                    errorMessage = response.statusText;
+                }
+
                 if (response.status === 403) {
                     throw new Error('접근 권한이 없습니다. 로그인해주세요.');
                 }
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorMessage || response.statusText}`);
             }
 
             const data: PresentationResponse[] = await response.json();
@@ -186,7 +188,7 @@ const Workspace: React.FC = () => {
     const createPresentation = async (): Promise<string | null> => {
         try {
             const requestData: CreatePresentationRequest = {
-                user_id: user?.id || 'anonymous' // 로그인된 사용자 ID 또는 익명
+                user_id: user?.id || 'anonymous'
             };
 
             const headers: Record<string, string> = {
@@ -194,7 +196,6 @@ const Workspace: React.FC = () => {
                 'Accept': 'text/plain',
             };
 
-            // 로그인된 사용자의 경우 토큰 추가
             const accessToken = localStorage.getItem('accessToken');
 
             if (accessToken) {
@@ -228,7 +229,6 @@ const Workspace: React.FC = () => {
                 'Accept': 'application/json',
             };
 
-            // 로그인된 사용자의 경우 토큰 추가
             const accessToken = localStorage.getItem('accessToken');
 
             if (accessToken) {
@@ -254,16 +254,13 @@ const Workspace: React.FC = () => {
     };
 
     useEffect(() => {
-        // 로그인된 사용자만 API 호출
         if (isAuthenticated) {
             fetchPresentations();
         } else {
-            // 비로그인 사용자는 로딩 상태 해제
             setIsLoading(false);
         }
     }, [isAuthenticated]);
 
-    // 검색 시 첫 페이지로 리셋
     useEffect(() => {
         setCurrentPage(0);
     }, [search]);
@@ -318,7 +315,6 @@ const Workspace: React.FC = () => {
         try {
             const success = await deletePresentation(presentationId);
             if (success) {
-                // 삭제 성공 시 목록에서 제거
                 setPresentations(prev => prev.filter(p => p.id !== presentationId));
                 alert('프레젠테이션이 삭제되었습니다.');
             }
@@ -379,7 +375,6 @@ const Workspace: React.FC = () => {
         );
     }
 
-    // 로그인하지 않은 사용자를 위한 페이지
     if (!isAuthenticated) {
         return (
             <div className="workspace">
@@ -519,7 +514,6 @@ const Workspace: React.FC = () => {
         );
     }
 
-    // 로그인한 사용자를 위한 기존 페이지
     return (
         <div className="workspace">
             <Header
@@ -600,7 +594,6 @@ const Workspace: React.FC = () => {
                         ))}
                     </div>
 
-                    {/* 슬라이드 네비게이션 */}
                     {totalPages > 1 && (
                         <div className="slide-navigation">
                             <button

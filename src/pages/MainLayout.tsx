@@ -15,7 +15,7 @@ import { demoPresentations } from "../data/demoData";
 import jsPDF from 'jspdf';
 import "./MainLayout.css";
 
-const API_BASE = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_BASE_URL;
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : undefined);
 const WS_URL   = import.meta.env.DEV ? (import.meta.env.VITE_WS_URL || 'wss://localhost:8080/ws') : import.meta.env.VITE_WS_URL;
 
 type YSlideDataMap = Y.Map<any>;

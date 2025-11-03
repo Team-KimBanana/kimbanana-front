@@ -19,16 +19,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
 
     useEffect(() => {
         clearError();
-        const callback = () => {
+        setOAuthSuccessCallback(() => {
             onClose();
-        };
-        setOAuthSuccessCallback(callback);
-        
+        });
+
         return () => {
             setOAuthSuccessCallback(undefined);
         };
-
-    }, []);
+    }, [clearError, setOAuthSuccessCallback, onClose]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -132,9 +130,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
                     </button>
                 </form>
 
-              <div className="divider">
-                <span className="divider-text">또는</span>
-              </div>
+                <div className="divider">
+                    <span className="divider-text">또는</span>
+                </div>
 
                 <div className="social-login">
                     <button

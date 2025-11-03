@@ -83,9 +83,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const refreshRetryCount = React.useRef(0);
     const oAuthSuccessCallback = React.useRef<(() => void) | undefined>(undefined);
 
-    const API_BASE_URL = import.meta.env.DEV
-        ? '/api'
-        : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : 'http://localhost:8080/api');
 
     const attemptTokenRefresh = useCallback(async (isSilent: boolean, loadUserFn?: (token: string) => Promise<void>): Promise<boolean> => {
         const refreshToken = localStorage.getItem('refreshToken');
@@ -190,15 +188,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             if (response.ok) {
                 const data: UserInfoWithTokens = await response.json();
-                
 
+                // 토큰이 응답에 포함되어 있으면 localStorage에 저장
                 if (data.accessToken && data.refreshToken) {
                     localStorage.setItem('accessToken', data.accessToken);
                     localStorage.setItem('refreshToken', data.refreshToken);
                     refreshRetryCount.current = 0;
                     console.log('OAuth 토큰 저장 완료');
                 }
-                
+
                 const user: User = {
                     id: data.id,
                     email: data.email,
