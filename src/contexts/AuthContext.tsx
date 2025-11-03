@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo } from '../types/types';
+import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo, UserInfoWithTokens } from '../types/types';
 
 interface AuthContextType extends AuthState {
     login: (credentials: SignInRequest) => Promise<{ success: boolean; error?: string }>;
@@ -144,6 +144,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUser = useCallback(async (token: string) => {
         try {
+            console.log('사용자 정보 로드 시도 (토큰 기반):', `${API_BASE_URL}/auth/profile`);
             const response = await fetch(`${API_BASE_URL}/auth/profile`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -172,64 +173,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
-            // 1. 먼저 쿠키로 토큰 발급 시도
-            const tokenResponse = await fetch(`${API_BASE_URL}/auth/sign-in`, {
-                method: 'POST',
+            console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
+            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
                 credentials: 'include',
             });
 
-            if (tokenResponse.ok) {
-                const tokenData: AuthResponse = await tokenResponse.json();
-                localStorage.setItem('accessToken', tokenData.accessToken);
-                localStorage.setItem('refreshToken', tokenData.refreshToken);
+            console.log('OAuth 사용자 정보 응답:', {
+                status: response.status,
+                ok: response.ok,
+                statusText: response.statusText
+            });
 
-                // 토큰 받은 후 사용자 정보 조회
-                await loadUser(tokenData.accessToken);
+            if (response.ok) {
+                const data: UserInfoWithTokens = await response.json();
+                
+                // 토큰이 응답에 포함되어 있으면 localStorage에 저장
+                if (data.accessToken && data.refreshToken) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                    localStorage.setItem('refreshToken', data.refreshToken);
+                    refreshRetryCount.current = 0;
+                    console.log('OAuth 토큰 저장 완료');
+                }
+                
+                const user: User = {
+                    id: data.id,
+                    email: data.email,
+                    name: data.name,
+                    profileImage: undefined,
+                    createdAt: new Date().toISOString(),
+                };
+                dispatch({ type: 'LOAD_USER', payload: user });
                 return true;
             } else {
-                // 토큰 발급 실패 시, 원래 방식대로 /auth/profile로 사용자 정보 조회 시도
-                const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                    },
-                    credentials: 'include',
-                });
-
-                if (profileResponse.ok) {
-                    const userInfo: UserInfo = await profileResponse.json();
-                    const user: User = {
-                        id: userInfo.id,
-                        email: userInfo.email,
-                        name: userInfo.name,
-                        profileImage: undefined,
-                        createdAt: new Date().toISOString(),
-                    };
-                    dispatch({ type: 'LOAD_USER', payload: user });
-                    // 토큰은 없지만 로그인은 성공 (쿠키로 인증)
-                    return true;
-                } else {
-                    const errorText = await profileResponse.text().catch(() => '');
-                    console.error('OAuth 로그인 후 사용자 정보 조회 실패:', profileResponse.status, errorText);
-                    return false;
-                }
+                const errorText = await response.text().catch(() => '');
+                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
+                return false;
             }
         } catch (error) {
-            console.error('OAuth 로그인 중 오류:', error);
+            console.error('OAuth 사용자 정보 조회 중 오류:', error);
             return false;
         }
-    }, [API_BASE_URL, loadUser]);
+    }, [API_BASE_URL]);
 
     const handleOAuthCallback = useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
 
-        
+
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
             const success = await loadUserFromOAuth();
             if (success) {
@@ -239,12 +234,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } else {
                 dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
             }
-            
+
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
         } else if (oauthError) {
             dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
-            
+
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
         } else {

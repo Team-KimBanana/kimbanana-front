@@ -168,6 +168,11 @@ export interface UserInfo {
     name: string;
 }
 
+export interface UserInfoWithTokens extends UserInfo {
+    accessToken?: string;
+    refreshToken?: string;
+}
+
 export interface ProfileResponse {
     id: string;
     email: string;
