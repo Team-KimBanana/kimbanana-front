@@ -172,6 +172,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
+            // 1. 먼저 쿠키로 토큰 발급 시도
             const tokenResponse = await fetch(`${API_BASE_URL}/auth/sign-in`, {
                 method: 'POST',
                 headers: {
@@ -186,15 +187,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 localStorage.setItem('accessToken', tokenData.accessToken);
                 localStorage.setItem('refreshToken', tokenData.refreshToken);
 
+                // 토큰 받은 후 사용자 정보 조회
                 await loadUser(tokenData.accessToken);
                 return true;
             } else {
-                const errorText = await tokenResponse.text().catch(() => '');
-                console.error('OAuth 로그인 후 토큰 발급 실패:', tokenResponse.status, errorText);
-                return false;
+                // 토큰 발급 실패 시, 원래 방식대로 /auth/profile로 사용자 정보 조회 시도
+                const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'include',
+                });
+
+                if (profileResponse.ok) {
+                    const userInfo: UserInfo = await profileResponse.json();
+                    const user: User = {
+                        id: userInfo.id,
+                        email: userInfo.email,
+                        name: userInfo.name,
+                        profileImage: undefined,
+                        createdAt: new Date().toISOString(),
+                    };
+                    dispatch({ type: 'LOAD_USER', payload: user });
+                    // 토큰은 없지만 로그인은 성공 (쿠키로 인증)
+                    return true;
+                } else {
+                    const errorText = await profileResponse.text().catch(() => '');
+                    console.error('OAuth 로그인 후 사용자 정보 조회 실패:', profileResponse.status, errorText);
+                    return false;
+                }
             }
         } catch (error) {
-            console.error('OAuth 로그인 후 토큰 발급 중 오류:', error);
+            console.error('OAuth 로그인 중 오류:', error);
             return false;
         }
     }, [API_BASE_URL, loadUser]);
