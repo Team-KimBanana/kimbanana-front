@@ -14,7 +14,7 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || '';
 
 const toAbsolute = (url?: string | null) => {
     if (!url) return '';
-    
+
     // 절대 URL인 경우 API 프록시를 통해 로드
     if (/^https?:\/\//i.test(url)) {
         // daisy.wisoft.io 도메인인 경우 프록시로 변환
@@ -24,7 +24,7 @@ const toAbsolute = (url?: string | null) => {
         }
         return url;
     }
-    
+
     return `${BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
 };
 
@@ -43,7 +43,7 @@ const Workspace: React.FC = () => {
     const [demoThumbnails, setDemoThumbnails] = useState<{ [key: string]: string }>({});
 
     // 개발 환경에서는 프록시 사용, 운영 환경에서는 실제 URL 사용
-    const API_BASE_URL = import.meta.env.DEV 
+    const API_BASE_URL = import.meta.env.DEV
         ? '/api'  // 개발 환경: Vite 프록시 사용
         : import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
@@ -60,39 +60,39 @@ const Workspace: React.FC = () => {
     // 인증 헤더를 포함하여 썸네일 이미지 가져오기
     const fetchThumbnailWithAuth = async (thumbnailUrl: string): Promise<string> => {
         if (!thumbnailUrl) return '/kimbanana/ui/assets/default-thumbnail.png';
-        
+
         // 이미 캐시에 있으면 반환
         if (thumbnailCache[thumbnailUrl]) {
             return thumbnailCache[thumbnailUrl];
         }
-        
+
         try {
             const accessToken = localStorage.getItem('accessToken');
             const headers: Record<string, string> = {};
-            
+
             if (accessToken) {
                 headers['Authorization'] = `Bearer ${accessToken}`;
             }
-            
+
             const response = await fetch(thumbnailUrl, {
                 method: 'GET',
                 headers,
                 credentials: 'include',
             });
-            
+
             if (!response.ok) {
                 return '/assets/default-thumbnail.png';
             }
-            
+
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
-            
+
             // 캐시에 저장
             setThumbnailCache(prev => ({
                 ...prev,
                 [thumbnailUrl]: blobUrl
             }));
-            
+
             return blobUrl;
         } catch (err) {
             return '/kimbanana/ui/assets/default-thumbnail.png';
@@ -105,28 +105,43 @@ const Workspace: React.FC = () => {
             setIsLoading(true);
             setError(null);
 
-            const requestData = {
-                user_id: user?.id || ""
-            };
-
             const headers: Record<string, string> = {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json',
             };
 
-            // 로그인된 사용자의 경우 토큰 추가
+
             const accessToken = localStorage.getItem('accessToken');
-            
+
             if (accessToken) {
                 headers['Authorization'] = `Bearer ${accessToken}`;
             }
 
-            const response = await fetch(`${API_BASE_URL}/workspace/presentations/list`, {
-                method: 'POST',
+
+            const userId = user?.id || "";
+            const url = userId 
+                ? `${API_BASE_URL}/workspace/presentations/list?user_id=${encodeURIComponent(userId)}`
+                : `${API_BASE_URL}/workspace/presentations/list`;
+
+
+            let response = await fetch(url, {
+                method: 'GET',
                 headers,
-                body: JSON.stringify(requestData),
                 credentials: 'include',
             });
+
+
+            if (!response.ok && response.status === 405) {
+                const requestData = {
+                    user_id: userId
+                };
+                headers['Content-Type'] = 'application/json';
+                response = await fetch(`${API_BASE_URL}/workspace/presentations/list`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(requestData),
+                    credentials: 'include',
+                });
+            }
 
             if (!response.ok) {
                 if (response.status === 403) {
@@ -137,7 +152,6 @@ const Workspace: React.FC = () => {
 
             const data: PresentationResponse[] = await response.json();
 
-            // API 응답을 기존 Presentation 타입으로 변환
             const mappedPresentations: Presentation[] = data.map((item) => ({
                 id: item.presentation.presentation_id,
                 title: item.presentation.presentation_title,
@@ -150,14 +164,13 @@ const Workspace: React.FC = () => {
             }));
 
             setPresentations(mappedPresentations);
-            
-            // 썸네일을 인증과 함께 다운로드
+
             mappedPresentations.forEach(async (presentation) => {
                 const originalUrl = data.find(item => item.presentation.presentation_id === presentation.id)?.thumbnail_url;
                 if (originalUrl && originalUrl.includes('daisy.wisoft.io')) {
                     const proxyUrl = originalUrl.replace(/^https?:\/\/daisy\.wisoft\.io\/kimbanana\/app/, '/api');
                     const blobUrl = await fetchThumbnailWithAuth(proxyUrl);
-                    setPresentations(prev => prev.map(p => 
+                    setPresentations(prev => prev.map(p =>
                         p.id === presentation.id ? { ...p, thumbnail: blobUrl } : p
                     ));
                 }
@@ -403,7 +416,7 @@ const Workspace: React.FC = () => {
                                     </div>
                                     <h3 className="feature-title">슬라이드별 복원</h3>
                                     <p className="feature-description">
-                                        각 슬라이드의 변경 이력을 개별적으로 관리하고, 
+                                        각 슬라이드의 변경 이력을 개별적으로 관리하고,
                                         원하는 시점으로 언제든 복원할 수 있습니다.
                                     </p>
                                 </div>
@@ -413,7 +426,7 @@ const Workspace: React.FC = () => {
                                     </div>
                                     <h3 className="feature-title">실시간 협업</h3>
                                     <p className="feature-description">
-                                        여러 사용자가 동시에 편집하며, 
+                                        여러 사용자가 동시에 편집하며,
                                         실시간으로 변경사항을 공유할 수 있습니다.
                                     </p>
                                 </div>
@@ -423,7 +436,7 @@ const Workspace: React.FC = () => {
                                     </div>
                                     <h3 className="feature-title">직관적인 편집</h3>
                                     <p className="feature-description">
-                                        드래그 앤 드롭으로 쉽게 도형을 추가하고, 
+                                        드래그 앤 드롭으로 쉽게 도형을 추가하고,
                                         자유로운 그리기 도구로 아이디어를 표현하세요.
                                     </p>
                                 </div>

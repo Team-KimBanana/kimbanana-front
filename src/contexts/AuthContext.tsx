@@ -191,7 +191,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (response.ok) {
                 const data: UserInfoWithTokens = await response.json();
                 
-                // 토큰이 응답에 포함되어 있으면 localStorage에 저장
+
                 if (data.accessToken && data.refreshToken) {
                     localStorage.setItem('accessToken', data.accessToken);
                     localStorage.setItem('refreshToken', data.refreshToken);

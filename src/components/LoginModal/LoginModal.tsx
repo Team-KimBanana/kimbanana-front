@@ -19,14 +19,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
 
     useEffect(() => {
         clearError();
-        setOAuthSuccessCallback(() => {
+        const callback = () => {
             onClose();
-        });
+        };
+        setOAuthSuccessCallback(callback);
         
         return () => {
             setOAuthSuccessCallback(undefined);
         };
-    }, [clearError, setOAuthSuccessCallback, onClose]);
+
+    }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
