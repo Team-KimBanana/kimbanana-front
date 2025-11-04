@@ -86,6 +86,7 @@ const MainLayout: React.FC = () => {
     const stompClientRef = useRef<Client | null>(null);
     const structureSubRef = useRef<StompSubscription | null>(null);
     const slideSubRef = useRef<StompSubscription | null>(null);
+    const allSlideSubsRef = useRef<Map<string, StompSubscription>>(new Map());
 
     const yDocRef = useRef<Y.Doc | null>(null);
     const yMapRef = useRef<YPresentationMap | null>(null);
@@ -442,7 +443,10 @@ const MainLayout: React.FC = () => {
                     } catch (e) { console.error("구조 메시지 처리 오류:", e); }
                 });
 
-                fetchSlides();
+                fetchSlides().then(() => {
+                    // 슬라이드 로드 후 모든 슬라이드 구독
+                    subscribeToAllSlides(client);
+                });
 
                 resubscribeSlideChannel(client);
             };
@@ -468,6 +472,8 @@ const MainLayout: React.FC = () => {
             ydoc.off("update", handleYUpdate);
 
             slideSubRef.current?.unsubscribe();
+            allSlideSubsRef.current.forEach((sub) => sub.unsubscribe());
+            allSlideSubsRef.current.clear();
             structureSubRef.current?.unsubscribe();
             stompClientRef.current?.deactivate();
 
@@ -505,6 +511,59 @@ const MainLayout: React.FC = () => {
         });
     };
 
+    const subscribeToAllSlides = useCallback((client?: Client | null) => {
+        const c = client ?? stompClientRef.current;
+        if (!c) return;
+
+        // 기존 모든 슬라이드 구독 정리
+        allSlideSubsRef.current.forEach((sub) => sub.unsubscribe());
+        allSlideSubsRef.current.clear();
+
+        // 현재 슬라이드 목록 가져오기
+        const currentSlideIds = yOrderRef.current?.toArray() || slides.map(s => s.id);
+        if (currentSlideIds.length === 0) return;
+
+        // 모든 슬라이드에 대해 구독
+        currentSlideIds.forEach((slideId: string) => {
+            const topic = `/topic/presentation.${presentationId}.slide.${slideId}`;
+            const sub = c.subscribe(topic, (message) => {
+                try {
+                    const parsed = JSON.parse(message.body);
+                    const data = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+                    if (!data) return;
+
+                    const updatedSlideId = slideId;
+                    isApplyingRemoteUpdate.current = true;
+                    try {
+                        yDocRef.current?.transact(() => {
+                            const yMap = yMapRef.current;
+                            if (!yMap) return;
+                            const ySlide = yMap.get(updatedSlideId) as YSlideDataMap | undefined;
+                            if (!ySlide) return;
+                            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+                            const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
+                            yShapes.delete(0, yShapes.length);
+                            yTexts.delete(0, yTexts.length);
+                            yShapes.insert(0, normalizeShapes(data.shapes || []));
+                            yTexts.insert(0,  normalizeTexts(data.texts  || []));
+                        }, "remote-slide-apply");
+
+                        // 원격 업데이트를 받았을 때 썸네일 업데이트
+                        const updatedData: SlideData = {
+                            shapes: normalizeShapes(data.shapes || []),
+                            texts: normalizeTexts(data.texts || [])
+                        };
+                        // 강제로 썸네일 렌더링 (이미 있어도 업데이트)
+                        renderThumbnail(updatedSlideId, updatedData, currentSlideIds.indexOf(updatedSlideId) === 0);
+                    } finally {
+                        isApplyingRemoteUpdate.current = false;
+                    }
+                } catch (e) { console.error("슬라이드 수신 처리 오류:", e); }
+            });
+            allSlideSubsRef.current.set(slideId, sub);
+        });
+    }, [presentationId, slides, renderThumbnail]);
+
     useEffect(() => {
         if (!slides.length) return;
         slides.forEach((s, idx) => {
@@ -513,7 +572,11 @@ const MainLayout: React.FC = () => {
                 scheduleThumbnail(s.id, data, idx === 0);
             }
         });
-    }, [slides, slideData, scheduleThumbnail]);
+        // 슬라이드 목록이 변경될 때 모든 슬라이드 구독 업데이트
+        if (stompClientRef.current?.connected) {
+            subscribeToAllSlides();
+        }
+    }, [slides, slideData, scheduleThumbnail, subscribeToAllSlides]);
 
 
     useEffect(() => {
