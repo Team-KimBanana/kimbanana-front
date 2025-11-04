@@ -336,24 +336,38 @@ const MainLayout: React.FC = () => {
 
         ydoc.on("update", handleYUpdate);
 
-        getAuthToken().then((token) => {
-            console.log('STOMP 연결 시도:', {
-                brokerURL: WS_URL,
-                hasToken: !!token,
-                hasCookies: document.cookie.length > 0,
-            });
-            
-            const client = new Client({
-                brokerURL: WS_URL,
-                reconnectDelay: 5000,
-                connectHeaders: token ? { 'Authorization': `Bearer ${token}` } : {},
-            });
+        // STOMP 클라이언트 초기화 (beforeConnect에서 최신 토큰을 가져옴)
+        const client = new Client({
+            brokerURL: WS_URL,
+            reconnectDelay: 5000,
+            // 초기 connectHeaders는 빈 객체로 설정 (beforeConnect에서 최신 토큰 주입)
+            connectHeaders: {},
+            // 매 연결/재연결 시 최신 토큰을 가져와서 헤더에 주입
+            beforeConnect: async () => {
+                const token = await getAuthToken();
+                if (token) {
+                    client.connectHeaders = { 'Authorization': `Bearer ${token}` };
+                    console.log('STOMP 연결 시도 (토큰 포함):', {
+                        brokerURL: WS_URL,
+                        hasToken: true,
+                        hasCookies: document.cookie.length > 0,
+                    });
+                } else {
+                    client.connectHeaders = {};
+                    console.log('STOMP 연결 시도 (토큰 없음):', {
+                        brokerURL: WS_URL,
+                        hasToken: false,
+                        hasCookies: document.cookie.length > 0,
+                    });
+                }
+            },
+        });
 
-            client.onConnect = () => {
-                stompClientRef.current = client;
+        client.onConnect = () => {
+            stompClientRef.current = client;
 
-                structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
-                    try {
+            structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
+                try {
             const parsed = JSON.parse(message.body);
                         const { type, payload } = parsed || {};
 
@@ -402,20 +416,42 @@ const MainLayout: React.FC = () => {
                 resubscribeSlideChannel(client);
             };
 
-            client.onStompError = (frame) => {
-                console.error("STOMP 에러:", {
-                    command: frame.command,
-                    headers: frame.headers,
-                    body: frame.body,
-                });
-            };
-            client.onWebSocketError = (event) => {
-                console.error("WebSocket 연결 에러:", event);
-            };
+        client.onStompError = (frame) => {
+            console.error("STOMP 에러:", {
+                command: frame.command,
+                headers: frame.headers,
+                body: frame.body,
+            });
+        };
+        client.onWebSocketError = (event) => {
+            console.error("WebSocket 연결 에러:", event);
+        };
 
+        // 인증이 완료될 때까지 STOMP 연결을 지연
+        // OAuth 로그인 시 토큰이 준비될 때까지 기다림
+        const initStomp = async () => {
+            // 토큰이 준비될 때까지 최대 5초 대기
+            let retries = 0;
+            const maxRetries = 50; // 5초 (100ms * 50)
+            
+            while (retries < maxRetries) {
+                const token = await getAuthToken();
+                if (token) {
+                    // 토큰이 준비되면 연결 시작
+                    client.activate();
+                    return;
+                }
+                // 토큰이 없으면 100ms 대기 후 재시도
+                await new Promise(resolve => setTimeout(resolve, 100));
+                retries++;
+            }
+            
+            // 최대 재시도 후에도 토큰이 없으면 토큰 없이 연결 시도 (비로그인 사용자)
+            console.warn('토큰을 가져올 수 없어 토큰 없이 STOMP 연결 시도');
             client.activate();
-            stompClientRef.current = client;
-        });
+        };
+        
+        initStomp();
 
         return () => {
             yMapRef.current?.unobserveDeep(applyDocToReact);
