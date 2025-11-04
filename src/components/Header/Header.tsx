@@ -18,6 +18,8 @@ interface HeaderProps {
     presentationId?: string;
     onSaveHistory?: () => void | Promise<void | boolean>;
     onDownloadPdf?: () => Promise<void>;
+    onShare?: () => Promise<void> | void;
+    isGuest?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -34,6 +36,8 @@ const Header: React.FC<HeaderProps> = ({
                                            presentationId: presentationIdProp,
                                            onSaveHistory,
                                            onDownloadPdf,
+                                           onShare,
+                                           isGuest = false,
                                        }) => {
     const navigate = useNavigate();
     const { user, isAuthenticated, logout } = useAuth();
@@ -59,12 +63,21 @@ const Header: React.FC<HeaderProps> = ({
     return (
         <header className={`header header-${variant}`}>
             {(variant === "main" || variant === "workspace") && (
-                <div className="logo-container" onClick={() => navigate("/")}>
+                <div 
+                    className="logo-container" 
+                    onClick={() => {
+                        if (isGuest) {
+                            alert("게스트는 워크스페이스에 접근할 수 없습니다.");
+                            return;
+                        }
+                        navigate("/");
+                    }}
+                >
                     <img
                         src="/kimbanana/ui/assets/headerIcon/KimbananaLogo.svg"
                         alt="KimBanana Logo"
                         className="logo"
-                        style={{ cursor: "pointer" }}
+                        style={{ cursor: isGuest ? "not-allowed" : "pointer" }}
                     />
                 </div>
             )}
@@ -139,7 +152,16 @@ const Header: React.FC<HeaderProps> = ({
                         <img src="/kimbanana/ui/assets/headerIcon/save.svg" alt="Save" />
                     </button>
 
-                    <button className="header-btn share-btn">
+                    <button 
+                        className="header-btn share-btn" 
+                        onClick={() => {
+                            if (isGuest) {
+                                alert("초대 링크는 정식 사용자만 발급 가능합니다.");
+                                return;
+                            }
+                            onShare?.();
+                        }}
+                    >
                         <img src="/kimbanana/ui/assets/headerIcon/share.svg" alt="Share" />
                     </button>
                     <button className="header-btn download-btn" onClick={onDownloadPdf}>

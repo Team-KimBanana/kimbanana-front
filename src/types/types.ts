@@ -183,3 +183,10 @@ export interface AuthError {
     message: string;
     code?: string;
 }
+
+export interface InvitationResponse {
+    token: string;
+    presentation_id: string;
+    expires_at: string;
+    invitation_url: string;
+}

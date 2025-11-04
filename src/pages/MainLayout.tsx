@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import * as Y from "yjs";
 import {Client, StompSubscription} from "@stomp/stompjs";
 
@@ -13,6 +13,7 @@ import useFullscreen from "../hooks/useFullscreen";
 import { useThumbnails } from "../hooks/useThumbnails";
 import { demoPresentations } from "../data/demoData";
 import jsPDF from 'jspdf';
+import { createInvitation, verifyInvitation } from "../api/invitations";
 import "./MainLayout.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : undefined);
@@ -43,17 +44,6 @@ function dataURLtoBlob(dataURL: string) {
 const MainLayout: React.FC = () => {
     const { user, getAuthToken } = useAuth?.() ?? ({ user: null, getAuthToken: () => Promise.resolve(null) } as never);
 
-    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        const accessToken = await getAuthToken();
-        const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
-        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-        return fetch(url, {
-            ...options,
-            headers,
-            credentials: 'include',
-        });
-    }, [getAuthToken]);
-
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
@@ -70,12 +60,26 @@ const MainLayout: React.FC = () => {
     const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
     const [clipboardData, setClipboardData] = useState<{ shapes: Shape[]; texts: TextItem[] } | null>(null);
+    const [guestToken, setGuestToken] = useState<string | null>(null);
+
+    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        const accessToken = await getAuthToken();
+        const token = accessToken || guestToken;
+        const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+        });
+    }, [getAuthToken, guestToken]);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
 
     const { id } = useParams();
+    const location = useLocation();
     const presentationId = id ?? "p1";
     const isDemo = presentationId.startsWith('demo-');
 
@@ -92,6 +96,37 @@ const MainLayout: React.FC = () => {
     const lastBroadcastData = useRef<string>("");
 
     useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
+
+    // 초대 링크 검증 및 게스트 세션 생성
+    useEffect(() => {
+        if (isDemo) return;
+
+        const urlParams = new URLSearchParams(location.search);
+        const inviteToken = urlParams.get('invite');
+
+        if (inviteToken) {
+            verifyInvitation(inviteToken)
+                .then((response) => {
+                    if (response.valid && response.guest_token) {
+                        setGuestToken(response.guest_token);
+                        // URL에서 invite 파라미터 제거 (보안상의 이유)
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.delete('invite');
+                        window.history.replaceState({}, document.title, newUrl.pathname + newUrl.search);
+                        console.log('게스트 세션이 생성되었습니다.');
+                    } else {
+                        alert(response.message || '초대 링크가 유효하지 않거나 만료되었습니다.');
+                        // 초대 링크가 유효하지 않으면 메인 페이지로 리다이렉트
+                        window.location.href = '/kimbanana/ui/';
+                    }
+                })
+                .catch((err) => {
+                    console.error('초대 링크 검증 실패:', err);
+                    alert('초대 링크 검증 중 오류가 발생했습니다.');
+                    window.location.href = '/kimbanana/ui/';
+                });
+        }
+    }, [location.search, isDemo]);
 
     // 썸네일 관리 훅
     const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
@@ -336,10 +371,20 @@ const MainLayout: React.FC = () => {
 
         ydoc.on("update", handleYUpdate);
 
-        getAuthToken().then((token) => {
+        // 정식 사용자 토큰 또는 게스트 토큰 사용
+        const getWebSocketToken = async (): Promise<string | null> => {
+            const userToken = await getAuthToken();
+            if (userToken) return userToken;
+            // 클로저로 현재 guestToken 값 사용
+            return guestToken;
+        };
+
+        getWebSocketToken().then((token) => {
+            const isGuestMode = !!guestToken && token === guestToken;
             console.log('STOMP 연결 시도:', {
                 brokerURL: WS_URL,
                 hasToken: !!token,
+                isGuest: isGuestMode,
                 hasCookies: document.cookie.length > 0,
             });
 
@@ -429,7 +474,7 @@ const MainLayout: React.FC = () => {
             stompClientRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [WS_URL, presentationId, fetchSlides, getAuthToken, currentSlide, slides.length]);
+    }, [WS_URL, presentationId, fetchSlides, getAuthToken, guestToken, currentSlide, slides.length]);
 
     const resubscribeSlideChannel = (client?: Client | null) => {
         const c = client ?? stompClientRef.current;
@@ -785,6 +830,37 @@ const MainLayout: React.FC = () => {
         }
     };
 
+    const handleShare = async () => {
+        try {
+            if (isDemo) {
+                alert("데모 프레젠테이션은 초대 링크를 생성할 수 없습니다.");
+                return;
+            }
+
+            const accessToken = await getAuthToken();
+            if (!accessToken) {
+                alert("로그인이 필요합니다. 정식 사용자만 초대 링크를 생성할 수 있습니다.");
+                return;
+            }
+
+            const response = await createInvitation(
+                {
+                    presentation_id: presentationId,
+                    expires_in_hours: 24,
+                },
+                accessToken
+            );
+
+            // 클립보드에 초대 링크 복사
+            await navigator.clipboard.writeText(response.invitation_url);
+            alert("초대링크가 클립보드에 저장되었습니다!");
+        } catch (err) {
+            console.error("초대 링크 생성 실패:", err);
+            const errorMessage = err instanceof Error ? err.message : "초대 링크 생성 중 오류가 발생했습니다.";
+            alert(errorMessage);
+        }
+    };
+
     return (
         <div className="main-layout" ref={containerRef}>
             <Header
@@ -798,6 +874,8 @@ const MainLayout: React.FC = () => {
                 onTitleSave={savePresentationTitle}
                 onSaveHistory={handleSaveHistory}
                 onDownloadPdf={handleDownloadPdf}
+                onShare={handleShare}
+                isGuest={!!guestToken}
             />
             <div className="content">
                 <Sidebar
