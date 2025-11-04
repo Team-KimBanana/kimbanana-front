@@ -142,7 +142,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUser = useCallback(async (token: string) => {
         try {
-            console.log('사용자 정보 로드 시도 (토큰 기반):', `${API_BASE_URL}/auth/profile`);
             const response = await fetch(`${API_BASE_URL}/auth/profile`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -171,8 +170,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
-            console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
-            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+            const urlParams = new URLSearchParams(window.location.search);
+            const accessTokenParam = urlParams.get('accessToken');
+            const refreshTokenParam = urlParams.get('refreshToken');
+
+            if (accessTokenParam && refreshTokenParam) {
+                localStorage.setItem('accessToken', accessTokenParam);
+                localStorage.setItem('refreshToken', refreshTokenParam);
+                refreshRetryCount.current = 0;
+                console.log('OAuth 토큰 저장 완료 (URL 파라미터)');
+
+                const accessToken = accessTokenParam;
+                const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Accept': 'application/json',
+                    },
+                });
+
+                if (response.ok) {
+                    const userInfo: UserInfo = await response.json();
+                    const user: User = {
+                        id: userInfo.id,
+                        email: userInfo.email,
+                        name: userInfo.name,
+                        profileImage: undefined,
+                        createdAt: new Date().toISOString(),
+                    };
+                    dispatch({ type: 'LOAD_USER', payload: user });
+                    return true;
+                } else {
+                    console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status);
+                    return false;
+                }
+            }
+
+            const response = await fetch(`${API_BASE_URL}/auth/oauth/callback`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -180,50 +214,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 credentials: 'include',
             });
 
-            console.log('OAuth 사용자 정보 응답:', {
-                status: response.status,
-                ok: response.ok,
-                statusText: response.statusText
-            });
-
             if (response.ok) {
-                const data: UserInfoWithTokens = await response.json();
+                const data: AuthResponse = await response.json();
+                localStorage.setItem('accessToken', data.accessToken);
+                localStorage.setItem('refreshToken', data.refreshToken);
+                refreshRetryCount.current = 0;
 
-                // 토큰이 응답에 포함되어 있으면 localStorage에 저장
-                if (data.accessToken && data.refreshToken) {
-                    localStorage.setItem('accessToken', data.accessToken);
-                    localStorage.setItem('refreshToken', data.refreshToken);
-                    refreshRetryCount.current = 0;
-                    console.log('OAuth 토큰 저장 완료');
-                }
-
-                const user: User = {
-                    id: data.id,
-                    email: data.email,
-                    name: data.name,
-                    profileImage: undefined,
-                    createdAt: new Date().toISOString(),
-                };
-                dispatch({ type: 'LOAD_USER', payload: user });
+                await loadUser(data.accessToken);
                 return true;
             } else {
-                const errorText = await response.text().catch(() => '');
-                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
+                console.error('OAuth 콜백 처리 실패:', response.status);
                 return false;
             }
         } catch (error) {
             console.error('OAuth 사용자 정보 조회 중 오류:', error);
             return false;
         }
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, loadUser]);
 
     const handleOAuthCallback = useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
+        const accessTokenParam = urlParams.get('accessToken');
+        const refreshTokenParam = urlParams.get('refreshToken');
 
-
-        if (oauthSuccess === 'true' || oauthSuccess === '1') {
+        // URL 파라미터에 토큰이 있거나 oauth_success가 있으면 처리
+        if (oauthSuccess === 'true' || oauthSuccess === '1' || (accessTokenParam && refreshTokenParam)) {
             const success = await loadUserFromOAuth();
             if (success) {
                 if (oAuthSuccessCallback.current) {
@@ -241,12 +258,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
         } else {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
+            if (accessTokenParam && refreshTokenParam) {
+                const success = await loadUserFromOAuth();
+                if (success) {
+                    if (oAuthSuccessCallback.current) {
+                        oAuthSuccessCallback.current();
+                    }
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
                 }
-            } else {
             }
         }
     }, [loadUserFromOAuth]);
