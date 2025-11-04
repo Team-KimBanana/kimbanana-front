@@ -170,25 +170,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
-            // 먼저 URL 파라미터에서 토큰 확인 (백엔드가 URL로 토큰을 전달하는 경우)
-            const urlParams = new URLSearchParams(window.location.search);
-            const accessTokenParam = urlParams.get('accessToken');
-            const refreshTokenParam = urlParams.get('refreshToken');
-
-            if (accessTokenParam && refreshTokenParam) {
-                localStorage.setItem('accessToken', accessTokenParam);
-                localStorage.setItem('refreshToken', refreshTokenParam);
-                refreshRetryCount.current = 0;
-                console.log('OAuth 토큰 저장 완료 (URL 파라미터)');
-
-                // 토큰으로 사용자 정보 가져오기
-                await loadUser(accessTokenParam);
-                return true;
-            }
-
-            // URL 파라미터에 토큰이 없으면 쿠키 기반으로 /auth/profile 호출 (원래 방식)
-            // 백엔드가 OAuth 로그인 후 쿠키를 설정하고, 응답에서 토큰을 포함시켜 보내는 경우
-            console.log('OAuth 사용자 정보 조회 시도 (쿠키 기반):', `${API_BASE_URL}/auth/profile`);
+            console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
             const response = await fetch(`${API_BASE_URL}/auth/profile`, {
                 method: 'GET',
                 headers: {
@@ -205,15 +187,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             if (response.ok) {
                 const data: UserInfoWithTokens = await response.json();
-
+                
                 // 토큰이 응답에 포함되어 있으면 localStorage에 저장
                 if (data.accessToken && data.refreshToken) {
                     localStorage.setItem('accessToken', data.accessToken);
                     localStorage.setItem('refreshToken', data.refreshToken);
                     refreshRetryCount.current = 0;
-                    console.log('OAuth 토큰 저장 완료 (응답에서)');
+                    console.log('OAuth 토큰 저장 완료');
                 }
-
+                
                 const user: User = {
                     id: data.id,
                     email: data.email,
@@ -232,17 +214,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.error('OAuth 사용자 정보 조회 중 오류:', error);
             return false;
         }
-    }, [API_BASE_URL, loadUser]);
+    }, [API_BASE_URL]);
 
     const handleOAuthCallback = useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
-        const accessTokenParam = urlParams.get('accessToken');
-        const refreshTokenParam = urlParams.get('refreshToken');
 
-        // URL 파라미터에 토큰이 있거나 oauth_success가 있으면 처리
-        if (oauthSuccess === 'true' || oauthSuccess === '1' || (accessTokenParam && refreshTokenParam)) {
+        if (oauthSuccess === 'true' || oauthSuccess === '1') {
             const success = await loadUserFromOAuth();
             if (success) {
                 if (oAuthSuccessCallback.current) {
@@ -260,15 +239,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
         } else {
-            if (accessTokenParam && refreshTokenParam) {
-                const success = await loadUserFromOAuth();
-                if (success) {
-                    if (oAuthSuccessCallback.current) {
-                        oAuthSuccessCallback.current();
-                    }
-                    const newUrl = window.location.pathname;
-                    window.history.replaceState({}, document.title, newUrl);
+            const success = await loadUserFromOAuth();
+            if (success) {
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
                 }
+            } else {
             }
         }
     }, [loadUserFromOAuth]);
