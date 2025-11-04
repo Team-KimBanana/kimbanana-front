@@ -1,6 +1,6 @@
 import React from "react";
 import "./Header.css";
-import { useNavigate, useParams } from "react-router-dom";
+import {Link, useNavigate, useParams} from "react-router-dom";
 import { Icon } from "@iconify/react";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -63,15 +63,18 @@ const Header: React.FC<HeaderProps> = ({
     return (
         <header className={`header header-${variant}`}>
             {(variant === "main" || variant === "workspace") && (
-                <div 
-                    className="logo-container" 
-                    onClick={() => {
+                <Link
+                    to="/"
+                    replace
+                    className="logo-container"
+                    aria-label="홈으로"
+                    onClick={(e) => {
                         if (isGuest) {
+                            e.preventDefault();
                             alert("게스트는 워크스페이스에 접근할 수 없습니다.");
-                            return;
                         }
-                        navigate("/");
                     }}
+                    style={{ cursor: isGuest ? "not-allowed" : "pointer" }}
                 >
                     <img
                         src="/kimbanana/ui/assets/headerIcon/KimbananaLogo.svg"
@@ -79,7 +82,7 @@ const Header: React.FC<HeaderProps> = ({
                         className="logo"
                         style={{ cursor: isGuest ? "not-allowed" : "pointer" }}
                     />
-                </div>
+                </Link>
             )}
 
             {variant === "history" && (
@@ -152,8 +155,8 @@ const Header: React.FC<HeaderProps> = ({
                         <img src="/kimbanana/ui/assets/headerIcon/save.svg" alt="Save" />
                     </button>
 
-                    <button 
-                        className="header-btn share-btn" 
+                    <button
+                        className="header-btn share-btn"
                         onClick={() => {
                             if (isGuest) {
                                 alert("초대 링크는 정식 사용자만 발급 가능합니다.");

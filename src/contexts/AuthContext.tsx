@@ -193,7 +193,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
             const profileData: UserInfoWithTokens = await profileResponse.json();
-            
+
             // 2. 토큰이 응답에 포함되어 있으면 바로 저장
             if (profileData.accessToken && profileData.refreshToken) {
                 localStorage.setItem('accessToken', profileData.accessToken);
@@ -229,7 +229,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     console.error('/api/auth/me 호출 중 오류:', meError);
                 }
             }
-            
+
             // 4. 사용자 정보 저장
             const user: User = {
                 id: profileData.id,
@@ -280,13 +280,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [loadUserFromOAuth]);
 
     useEffect(() => {
-        const accessToken = localStorage.getItem('accessToken');
-        if (accessToken) {
-            loadUser(accessToken);
-        } else {
-            handleOAuthCallback();
-        }
-    }, [getAuthToken, handleOAuthCallback, loadUser]);
+        (async () => {
+            // 1순위: 저장된 Bearer 토큰
+            const token = localStorage.getItem('accessToken');
+            try {
+                const res = await fetch(`${API_BASE_URL}/auth/profile`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    credentials: "include",
+                });
+                if (res.ok) {
+                    const user = await res.json();
+                    dispatch({ type: 'LOAD_USER', payload: user });
+                } else {
+                    dispatch({ type: 'LOGOUT' });
+                }
+            } catch (e) {
+                console.error('profile load failed', e);
+                dispatch({ type: 'LOGOUT' });
+            }
+        })();
+    }, []);
 
     const login = async (credentials: SignInRequest): Promise<{ success: boolean; error?: string }> => {
         dispatch({ type: 'LOGIN_START' });
