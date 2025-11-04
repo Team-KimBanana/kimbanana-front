@@ -81,6 +81,10 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSwitchToLogin 
             ...prev,
             [name]: value
         }));
+        // 사용자가 입력을 시작하면 에러를 지움
+        if (error) {
+            clearError();
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {

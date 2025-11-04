@@ -26,7 +26,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
         return () => {
             setOAuthSuccessCallback(undefined);
         };
-    }, [clearError, setOAuthSuccessCallback, onClose]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 모달이 열릴 때만 실행
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -34,6 +35,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSwitchToRegister }) 
             ...prev,
             [name]: value
         }));
+        // 사용자가 입력을 시작하면 에러를 지움
+        if (error) {
+            clearError();
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
