@@ -12,6 +12,20 @@ export const useThumbnails = ({ uploadFirstThumbnail }: UseThumbnailsProps) => {
     const renderingQueue = useRef<Set<string>>(new Set());
     const uploadHashRef = useRef<string>("");
     const uploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const dataHashRef = useRef<Record<string, string>>({});
+
+    // 데이터의 간단한 해시 생성 (JSON.stringify 사용)
+    const getDataHash = useCallback((data: SlideData): string => {
+        return JSON.stringify({
+            shapes: data.shapes?.map(s => ({ id: s.id, type: s.type, x: s.x, y: s.y, rotation: s.rotation, 
+                width: s.width, height: s.height, radiusX: (s as any).radiusX, radiusY: (s as any).radiusY,
+                color: s.color, imageSrc: s.imageSrc, points: s.points, 
+                numPoints: (s as any).numPoints, innerRadius: (s as any).innerRadius, outerRadius: (s as any).outerRadius,
+                pointerLength: (s as any).pointerLength, pointerWidth: (s as any).pointerWidth, strokeWidth: (s as any).strokeWidth
+            })),
+            texts: data.texts?.map(t => ({ id: t.id, text: t.text, x: t.x, y: t.y, color: t.color, fontSize: t.fontSize }))
+        });
+    }, []);
 
     const renderThumbnail = useCallback((slideId: string, data: SlideData, isFirst = false, pixelRatio = 0.25) => {
         if (renderingQueue.current.has(slideId)) return;
@@ -23,6 +37,10 @@ export const useThumbnails = ({ uploadFirstThumbnail }: UseThumbnailsProps) => {
 
         const handleRendered = (id: string, dataUrl: string) => {
             setThumbnails(prev => ({ ...prev, [id]: dataUrl }));
+            
+            // 데이터 해시 저장
+            const currentHash = getDataHash(data);
+            dataHashRef.current[id] = currentHash;
             
             if (isFirst) {
                 uploadFirstThumbnail(dataUrl).catch(err => 
@@ -43,10 +61,20 @@ export const useThumbnails = ({ uploadFirstThumbnail }: UseThumbnailsProps) => {
                 pixelRatio={pixelRatio}
             />
         );
-    }, [uploadFirstThumbnail]);
+    }, [uploadFirstThumbnail, getDataHash]);
 
-    const scheduleThumbnail = useCallback((slideId: string, data: SlideData, isFirst = false) => {
-        if (!data || thumbnails[slideId] || renderingQueue.current.has(slideId)) return;
+    const scheduleThumbnail = useCallback((slideId: string, data: SlideData, isFirst = false, forceUpdate = false) => {
+        if (!data) return;
+        
+        // 데이터 해시 확인
+        const currentHash = getDataHash(data);
+        const previousHash = dataHashRef.current[slideId];
+        
+        // 이미 렌더링 중이면 스킵 (단, forceUpdate가 true면 제외)
+        if (!forceUpdate && renderingQueue.current.has(slideId)) return;
+        
+        // 썸네일이 있고 데이터가 변경되지 않았으면 스킵 (단, forceUpdate가 true면 제외)
+        if (!forceUpdate && thumbnails[slideId] && previousHash === currentHash) return;
 
         const runner = () => renderThumbnail(slideId, data, isFirst);
 
@@ -55,7 +83,7 @@ export const useThumbnails = ({ uploadFirstThumbnail }: UseThumbnailsProps) => {
         } else {
             setTimeout(runner, 0);
         }
-    }, [thumbnails, renderThumbnail]);
+    }, [thumbnails, renderThumbnail, getDataHash]);
 
     const updateThumbnail = useCallback((slideId: string, dataUrl: string, firstSlideId?: string) => {
         setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));

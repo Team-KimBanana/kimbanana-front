@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import * as Y from "yjs";
 import {Client, StompSubscription} from "@stomp/stompjs";
 
@@ -13,7 +13,6 @@ import useFullscreen from "../hooks/useFullscreen";
 import { useThumbnails } from "../hooks/useThumbnails";
 import { demoPresentations } from "../data/demoData";
 import jsPDF from 'jspdf';
-import { createInvitation, verifyInvitation } from "../api/invitations";
 import "./MainLayout.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : undefined);
@@ -44,6 +43,17 @@ function dataURLtoBlob(dataURL: string) {
 const MainLayout: React.FC = () => {
     const { user, getAuthToken } = useAuth?.() ?? ({ user: null, getAuthToken: () => Promise.resolve(null) } as never);
 
+    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        const accessToken = await getAuthToken();
+        const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+        return fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+        });
+    }, [getAuthToken]);
+
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
     const [slides, setSlides] = useState<{ id: string; order: number }[]>([]);
@@ -60,26 +70,12 @@ const MainLayout: React.FC = () => {
     const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
     const [clipboardData, setClipboardData] = useState<{ shapes: Shape[]; texts: TextItem[] } | null>(null);
-    const [guestToken, setGuestToken] = useState<string | null>(null);
-
-    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        const accessToken = await getAuthToken();
-        const token = accessToken || guestToken;
-        const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        return fetch(url, {
-            ...options,
-            headers,
-            credentials: 'include',
-        });
-    }, [getAuthToken, guestToken]);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
 
     const { id } = useParams();
-    const location = useLocation();
     const presentationId = id ?? "p1";
     const isDemo = presentationId.startsWith('demo-');
 
@@ -97,37 +93,6 @@ const MainLayout: React.FC = () => {
     const lastBroadcastData = useRef<string>("");
 
     useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
-
-    // 초대 링크 검증 및 게스트 세션 생성
-    useEffect(() => {
-        if (isDemo) return;
-
-        const urlParams = new URLSearchParams(location.search);
-        const inviteToken = urlParams.get('invite');
-
-        if (inviteToken) {
-            verifyInvitation(inviteToken)
-                .then((response) => {
-                    if (response.valid && response.guest_token) {
-                        setGuestToken(response.guest_token);
-                        // URL에서 invite 파라미터 제거 (보안상의 이유)
-                        const newUrl = new URL(window.location.href);
-                        newUrl.searchParams.delete('invite');
-                        window.history.replaceState({}, document.title, newUrl.pathname + newUrl.search);
-                        console.log('게스트 세션이 생성되었습니다.');
-                    } else {
-                        alert(response.message || '초대 링크가 유효하지 않거나 만료되었습니다.');
-                        // 초대 링크가 유효하지 않으면 메인 페이지로 리다이렉트
-                        window.location.href = '/kimbanana/ui/';
-                    }
-                })
-                .catch((err) => {
-                    console.error('초대 링크 검증 실패:', err);
-                    alert('초대 링크 검증 중 오류가 발생했습니다.');
-                    window.location.href = '/kimbanana/ui/';
-                });
-        }
-    }, [location.search, isDemo]);
 
     // 썸네일 관리 훅
     const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
@@ -321,11 +286,72 @@ const MainLayout: React.FC = () => {
             const ids = yOrder.toArray();
             setSlides(ids.map((id, i) => ({ id, order: i + 1 })));
 
+            // 모든 슬라이드의 썸네일 업데이트 (데이터 변경 감지 포함)
             ids.forEach((id, idx) => {
                 if (mirror[id]) {
                     scheduleThumbnail(id, mirror[id], idx === 0);
                 }
             });
+            
+            // 모든 슬라이드에 대해 WebSocket 구독 관리
+            if (stompClientRef.current?.connected) {
+                const currentSubs = new Set(allSlideSubsRef.current.keys());
+                const newIds = new Set(ids);
+                
+                // 더 이상 존재하지 않는 슬라이드 구독 해제
+                currentSubs.forEach(slideId => {
+                    if (!newIds.has(slideId)) {
+                        allSlideSubsRef.current.get(slideId)?.unsubscribe();
+                        allSlideSubsRef.current.delete(slideId);
+                    }
+                });
+                
+                // 새로운 슬라이드에 대한 구독 추가
+                newIds.forEach(slideId => {
+                    if (!allSlideSubsRef.current.has(slideId) && stompClientRef.current?.connected) {
+                        const sub = stompClientRef.current.subscribe(
+                            `/topic/presentation.${presentationId}.slide.${slideId}`,
+                            (message) => {
+                                try {
+                                    const parsed = JSON.parse(message.body);
+                                    const data = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+                                    if (!data) return;
+
+                                    const normalizedData: SlideData = {
+                                        shapes: normalizeShapes(data.shapes || []),
+                                        texts: normalizeTexts(data.texts || [])
+                                    };
+
+                                    isApplyingRemoteUpdate.current = true;
+                                    try {
+                                        yDocRef.current?.transact(() => {
+                                            const ySlide = yMapRef.current?.get(slideId) as YSlideDataMap | null;
+                                            if (!ySlide) return;
+                                            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
+                                            const yTexts = ySlide.get("texts") as Y.Array<TextItem>;
+                                            yShapes.delete(0, yShapes.length);
+                                            yTexts.delete(0, yTexts.length);
+                                            yShapes.insert(0, normalizedData.shapes);
+                                            yTexts.insert(0, normalizedData.texts);
+                                        }, "remote-slide-apply-all");
+                                        
+                                        // 원격 업데이트 후 해당 슬라이드 썸네일 강제 업데이트
+                                        // 최신 슬라이드 순서 확인
+                                        const currentOrder = yOrderRef.current?.toArray() || [];
+                                        const isFirst = currentOrder[0] === slideId;
+                                        scheduleThumbnail(slideId, normalizedData, isFirst, true);
+                                    } finally {
+                                        isApplyingRemoteUpdate.current = false;
+                                    }
+                                } catch (e) { 
+                                    console.error(`슬라이드 ${slideId} 수신 처리 오류:`, e); 
+                                }
+                            }
+                        );
+                        allSlideSubsRef.current.set(slideId, sub);
+                    }
+                });
+            }
         };
 
         yMapRef.current.observeDeep(applyDocToReact);
@@ -372,20 +398,10 @@ const MainLayout: React.FC = () => {
 
         ydoc.on("update", handleYUpdate);
 
-        // 정식 사용자 토큰 또는 게스트 토큰 사용
-        const getWebSocketToken = async (): Promise<string | null> => {
-            const userToken = await getAuthToken();
-            if (userToken) return userToken;
-            // 클로저로 현재 guestToken 값 사용
-            return guestToken;
-        };
-
-        getWebSocketToken().then((token) => {
-            const isGuestMode = !!guestToken && token === guestToken;
+        getAuthToken().then((token) => {
             console.log('STOMP 연결 시도:', {
                 brokerURL: WS_URL,
                 hasToken: !!token,
-                isGuest: isGuestMode,
                 hasCookies: document.cookie.length > 0,
             });
 
@@ -443,10 +459,7 @@ const MainLayout: React.FC = () => {
                     } catch (e) { console.error("구조 메시지 처리 오류:", e); }
                 });
 
-                fetchSlides().then(() => {
-                    // 슬라이드 로드 후 모든 슬라이드 구독
-                    subscribeToAllSlides(client);
-                });
+                fetchSlides();
 
                 resubscribeSlideChannel(client);
             };
@@ -472,15 +485,15 @@ const MainLayout: React.FC = () => {
             ydoc.off("update", handleYUpdate);
 
             slideSubRef.current?.unsubscribe();
-            allSlideSubsRef.current.forEach((sub) => sub.unsubscribe());
-            allSlideSubsRef.current.clear();
             structureSubRef.current?.unsubscribe();
+            allSlideSubsRef.current.forEach(sub => sub.unsubscribe());
+            allSlideSubsRef.current.clear();
             stompClientRef.current?.deactivate();
 
             stompClientRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [WS_URL, presentationId, fetchSlides, getAuthToken, guestToken, currentSlide, slides.length]);
+    }, [WS_URL, presentationId, fetchSlides, getAuthToken, currentSlide, slides.length]);
 
     const resubscribeSlideChannel = (client?: Client | null) => {
         const c = client ?? stompClientRef.current;
@@ -492,6 +505,12 @@ const MainLayout: React.FC = () => {
                 const data = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
                 if (!data) return;
 
+                const slideId = parsed.slide_id || currentSlide;
+                const normalizedData: SlideData = {
+                    shapes: normalizeShapes(data.shapes || []),
+                    texts: normalizeTexts(data.texts || [])
+                };
+
                 isApplyingRemoteUpdate.current = true;
                 try {
                     yDocRef.current?.transact(() => {
@@ -501,68 +520,19 @@ const MainLayout: React.FC = () => {
                         const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
                         yShapes.delete(0, yShapes.length);
                         yTexts.delete(0, yTexts.length);
-                        yShapes.insert(0, normalizeShapes(data.shapes || []));
-                        yTexts.insert(0,  normalizeTexts(data.texts  || []));
+                        yShapes.insert(0, normalizedData.shapes);
+                        yTexts.insert(0, normalizedData.texts);
                     }, "remote-slide-apply");
+                    
+                    // 원격 업데이트 후 해당 슬라이드 썸네일 강제 업데이트
+                    const isFirst = slides[0]?.id === slideId;
+                    scheduleThumbnail(slideId, normalizedData, isFirst, true);
                 } finally {
                     isApplyingRemoteUpdate.current = false;
                 }
             } catch (e) { console.error("슬라이드 수신 처리 오류:", e); }
         });
     };
-
-    const subscribeToAllSlides = useCallback((client?: Client | null) => {
-        const c = client ?? stompClientRef.current;
-        if (!c) return;
-
-        // 기존 모든 슬라이드 구독 정리
-        allSlideSubsRef.current.forEach((sub) => sub.unsubscribe());
-        allSlideSubsRef.current.clear();
-
-        // 현재 슬라이드 목록 가져오기
-        const currentSlideIds = yOrderRef.current?.toArray() || slides.map(s => s.id);
-        if (currentSlideIds.length === 0) return;
-
-        // 모든 슬라이드에 대해 구독
-        currentSlideIds.forEach((slideId: string) => {
-            const topic = `/topic/presentation.${presentationId}.slide.${slideId}`;
-            const sub = c.subscribe(topic, (message) => {
-                try {
-                    const parsed = JSON.parse(message.body);
-                    const data = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
-                    if (!data) return;
-
-                    const updatedSlideId = slideId;
-                    isApplyingRemoteUpdate.current = true;
-                    try {
-                        yDocRef.current?.transact(() => {
-                            const yMap = yMapRef.current;
-                            if (!yMap) return;
-                            const ySlide = yMap.get(updatedSlideId) as YSlideDataMap | undefined;
-                            if (!ySlide) return;
-                            const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
-                            const yTexts  = ySlide.get("texts")  as Y.Array<TextItem>;
-                            yShapes.delete(0, yShapes.length);
-                            yTexts.delete(0, yTexts.length);
-                            yShapes.insert(0, normalizeShapes(data.shapes || []));
-                            yTexts.insert(0,  normalizeTexts(data.texts  || []));
-                        }, "remote-slide-apply");
-
-                        // 원격 업데이트를 받았을 때 썸네일 업데이트
-                        const updatedData: SlideData = {
-                            shapes: normalizeShapes(data.shapes || []),
-                            texts: normalizeTexts(data.texts || [])
-                        };
-                        // 강제로 썸네일 렌더링 (이미 있어도 업데이트)
-                        renderThumbnail(updatedSlideId, updatedData, currentSlideIds.indexOf(updatedSlideId) === 0);
-                    } finally {
-                        isApplyingRemoteUpdate.current = false;
-                    }
-                } catch (e) { console.error("슬라이드 수신 처리 오류:", e); }
-            });
-            allSlideSubsRef.current.set(slideId, sub);
-        });
-    }, [presentationId, slides, renderThumbnail]);
 
     useEffect(() => {
         if (!slides.length) return;
@@ -572,11 +542,7 @@ const MainLayout: React.FC = () => {
                 scheduleThumbnail(s.id, data, idx === 0);
             }
         });
-        // 슬라이드 목록이 변경될 때 모든 슬라이드 구독 업데이트
-        if (stompClientRef.current?.connected) {
-            subscribeToAllSlides();
-        }
-    }, [slides, slideData, scheduleThumbnail, subscribeToAllSlides]);
+    }, [slides, slideData, scheduleThumbnail]);
 
 
     useEffect(() => {
@@ -893,37 +859,6 @@ const MainLayout: React.FC = () => {
         }
     };
 
-    const handleShare = async () => {
-        try {
-            if (isDemo) {
-                alert("데모 프레젠테이션은 초대 링크를 생성할 수 없습니다.");
-                return;
-            }
-
-            const accessToken = await getAuthToken();
-            if (!accessToken) {
-                alert("로그인이 필요합니다. 정식 사용자만 초대 링크를 생성할 수 있습니다.");
-                return;
-            }
-
-            const response = await createInvitation(
-                {
-                    presentation_id: presentationId,
-                    expires_in_hours: 24,
-                },
-                accessToken
-            );
-
-            // 클립보드에 초대 링크 복사
-            await navigator.clipboard.writeText(response.invitation_url);
-            alert("초대링크가 클립보드에 저장되었습니다!");
-        } catch (err) {
-            console.error("초대 링크 생성 실패:", err);
-            const errorMessage = err instanceof Error ? err.message : "초대 링크 생성 중 오류가 발생했습니다.";
-            alert(errorMessage);
-        }
-    };
-
     return (
         <div className="main-layout" ref={containerRef}>
             <Header
@@ -937,8 +872,6 @@ const MainLayout: React.FC = () => {
                 onTitleSave={savePresentationTitle}
                 onSaveHistory={handleSaveHistory}
                 onDownloadPdf={handleDownloadPdf}
-                onShare={handleShare}
-                isGuest={!!guestToken}
             />
             <div className="content">
                 <Sidebar
