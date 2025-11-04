@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef, useCallback} from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import * as Y from "yjs";
 import {Client, StompSubscription} from "@stomp/stompjs";
 
@@ -13,6 +13,7 @@ import useFullscreen from "../hooks/useFullscreen";
 import { useThumbnails } from "../hooks/useThumbnails";
 import { demoPresentations } from "../data/demoData";
 import jsPDF from 'jspdf';
+import { createInvitation, verifyInvitation } from "../api/invitations";
 import "./MainLayout.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : undefined);
@@ -41,18 +42,22 @@ function dataURLtoBlob(dataURL: string) {
 }
 
 const MainLayout: React.FC = () => {
-    const { user, getAuthToken } = useAuth?.() ?? ({ user: null, getAuthToken: () => Promise.resolve(null) } as never);
+    const { user, getAuthToken, isAuthenticated } = useAuth?.() ?? ({ user: null, getAuthToken: () => Promise.resolve(null), isAuthenticated: false } as never);
+    const [searchParams] = useSearchParams();
+    const [guestToken, setGuestToken] = useState<string | null>(null);
+    const [isGuest, setIsGuest] = useState(false);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        const accessToken = await getAuthToken();
+        // 게스트 토큰이 있으면 게스트 토큰을 우선 사용, 없으면 일반 토큰 사용
+        const token = guestToken || await getAuthToken();
         const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
-        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         return fetch(url, {
             ...options,
             headers,
             credentials: 'include',
         });
-    }, [getAuthToken]);
+    }, [getAuthToken, guestToken]);
 
     const [activeTool, setActiveTool] = useState("cursor");
     const [selectedColor, setSelectedColor] = useState("#B0B0B0");
@@ -93,6 +98,58 @@ const MainLayout: React.FC = () => {
     const lastBroadcastData = useRef<string>("");
 
     useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
+
+    // 초대 링크 검증 및 게스트 토큰 설정
+    useEffect(() => {
+        // 정식 사용자가 로그인되어 있으면 게스트 토큰을 사용하지 않음
+        // accessToken도 함께 확인하여 더 확실하게
+        const hasAccessToken = localStorage.getItem('accessToken');
+        if (isAuthenticated || hasAccessToken) {
+            setGuestToken(null);
+            setIsGuest(false);
+            // 정식 사용자 세션에서는 게스트 토큰 정리
+            sessionStorage.removeItem(`guestToken_${presentationId}`);
+            return;
+        }
+
+        const inviteToken = searchParams.get('invite');
+        const guestTokenKey = `guestToken_${presentationId}`;
+        
+        if (inviteToken) {
+            verifyInvitation(inviteToken)
+                .then((result) => {
+                    if (result.valid && result.guest_token) {
+                        setGuestToken(result.guest_token);
+                        setIsGuest(true);
+                        // sessionStorage 사용 (탭별로 독립적, 프레젠테이션별로 구분)
+                        sessionStorage.setItem(guestTokenKey, result.guest_token);
+                        // URL에서 invite 파라미터 제거 (선택사항)
+                        const newSearchParams = new URLSearchParams(searchParams);
+                        newSearchParams.delete('invite');
+                        const newUrl = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
+                        window.history.replaceState({}, '', newUrl);
+                    } else {
+                        alert(result.message || "초대 링크가 유효하지 않거나 만료되었습니다.");
+                    }
+                })
+                .catch((error) => {
+                    console.error("초대 링크 검증 실패:", error);
+                    alert("초대 링크 검증에 실패했습니다.");
+                });
+        } else {
+            // invite 파라미터가 없으면 저장된 게스트 토큰 복원 시도 (sessionStorage에서)
+            const storedGuestToken = sessionStorage.getItem(guestTokenKey);
+            if (storedGuestToken) {
+                // 저장된 게스트 토큰이 있으면 복원 (페이지 새로고침 시, 같은 탭)
+                setGuestToken(storedGuestToken);
+                setIsGuest(true);
+            } else {
+                // 게스트 토큰이 없으면 게스트 모드 해제
+                setGuestToken(null);
+                setIsGuest(false);
+            }
+        }
+    }, [searchParams, presentationId, isAuthenticated]);
 
     // 썸네일 관리 훅
     const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
@@ -156,6 +213,38 @@ const MainLayout: React.FC = () => {
             doc.addImage(imgData, 'PNG', 0, 0, docWidth, docHeight);
         }
         doc.save(`${presentationTitle || 'Presentation'}.pdf`);
+    };
+
+    const handleShare = async () => {
+        try {
+            const token = await getAuthToken();
+            if (!token) {
+                alert("로그인이 필요합니다.");
+                return;
+            }
+
+            const invitation = await createInvitation(
+                {
+                    presentation_id: presentationId,
+                    expires_in_hours: 24,
+                },
+                token
+            );
+
+            // 초대 링크를 클립보드에 복사
+            try {
+                await navigator.clipboard.writeText(invitation.invitation_url);
+                alert("초대 링크가 클립보드에 복사되었습니다!");
+            } catch (err) {
+                // 클립보드 API가 실패하면 수동으로 선택 가능하도록 텍스트 표시
+                const fallbackText = `초대 링크: ${invitation.invitation_url}`;
+                alert(fallbackText);
+                console.error("클립보드 복사 실패:", err);
+            }
+        } catch (error) {
+            console.error("초대 링크 생성 실패:", error);
+            alert(error instanceof Error ? error.message : "초대 링크 생성에 실패했습니다.");
+        }
     };
 
     const fetchSlides = useCallback(async () => {
@@ -398,10 +487,13 @@ const MainLayout: React.FC = () => {
 
         ydoc.on("update", handleYUpdate);
 
-        getAuthToken().then((token) => {
+        // 게스트 토큰이 있으면 게스트 토큰 사용, 없으면 일반 토큰 사용
+        const tokenPromise = guestToken ? Promise.resolve(guestToken) : getAuthToken();
+        tokenPromise.then((token) => {
             console.log('STOMP 연결 시도:', {
                 brokerURL: WS_URL,
                 hasToken: !!token,
+                isGuest: !!guestToken,
                 hasCookies: document.cookie.length > 0,
             });
 
@@ -493,7 +585,7 @@ const MainLayout: React.FC = () => {
             stompClientRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [WS_URL, presentationId, fetchSlides, getAuthToken, currentSlide, slides.length]);
+    }, [WS_URL, presentationId, fetchSlides, getAuthToken, guestToken, currentSlide, slides.length]);
 
     const resubscribeSlideChannel = (client?: Client | null) => {
         const c = client ?? stompClientRef.current;
@@ -872,6 +964,8 @@ const MainLayout: React.FC = () => {
                 onTitleSave={savePresentationTitle}
                 onSaveHistory={handleSaveHistory}
                 onDownloadPdf={handleDownloadPdf}
+                onShare={handleShare}
+                isGuest={isGuest}
             />
             <div className="content">
                 <Sidebar

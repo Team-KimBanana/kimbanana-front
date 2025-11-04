@@ -190,3 +190,15 @@ export interface InvitationResponse {
     expires_at: string;
     invitation_url: string;
 }
+
+export interface InvitationVerificationResponse {
+    valid: boolean;
+    guest_token: string | null;
+    presentation_id: string | null;
+    message: string;
+}
+
+export interface CreateInvitationRequest {
+    presentation_id: string;
+    expires_in_hours?: number;
+}
