@@ -128,8 +128,7 @@ const MainLayout: React.FC = () => {
                         alert(result.message || "초대 링크가 유효하지 않거나 만료되었습니다.");
                     }
                 })
-                .catch((error) => {
-                    alert("초대 링크 검증에 실패했습니다.");
+                .catch(() => {
                 });
         } else {
             const storedGuestToken = sessionStorage.getItem(guestTokenKey);
@@ -378,7 +377,6 @@ const MainLayout: React.FC = () => {
                     }
                 });
                 
-                // 새로운 슬라이드에 대한 구독 추가
                 newIds.forEach(slideId => {
                     if (!allSlideSubsRef.current.has(slideId) && stompClientRef.current?.connected) {
                         const sub = stompClientRef.current.subscribe(
@@ -407,15 +405,14 @@ const MainLayout: React.FC = () => {
                                             yTexts.insert(0, normalizedData.texts);
                                         }, "remote-slide-apply-all");
                                         
-                                        // 원격 업데이트 후 해당 슬라이드 썸네일 강제 업데이트
-                                        // 최신 슬라이드 순서 확인
                                         const currentOrder = yOrderRef.current?.toArray() || [];
                                         const isFirst = currentOrder[0] === slideId;
                                         scheduleThumbnail(slideId, normalizedData, isFirst, true);
                                     } finally {
                                         isApplyingRemoteUpdate.current = false;
                                     }
-                                } catch (e) {}
+                                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                } catch (e) { /* empty */ }
                             }
                         );
                         allSlideSubsRef.current.set(slideId, sub);
