@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo, UserInfoWithTokens } from '../types/types';
+import { AuthState, User, SignInRequest, SignUpRequest, AuthResponse, UserInfo } from '../types/types';
 
 interface AuthContextType extends AuthState {
     login: (credentials: SignInRequest) => Promise<{ success: boolean; error?: string }>;
