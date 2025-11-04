@@ -202,3 +202,16 @@ export interface CreateInvitationRequest {
     presentation_id: string;
     expires_in_hours?: number;
 }
+
+export interface ActiveUser {
+    id: string;
+    name: string;
+    user_type: "USER" | "GUEST";
+    session_id: string;
+}
+
+export interface ActiveUsersResponse {
+    presentation_id: string;
+    active_users: ActiveUser[];
+    total_count: number;
+}

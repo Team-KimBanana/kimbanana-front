@@ -2,9 +2,7 @@ import { InvitationResponse, InvitationVerificationResponse, CreateInvitationReq
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : 'http://localhost:8080/api');
 
-/**
- * 초대 링크 생성 (정식 사용자만 가능, JWT 인증 필요)
- */
+
 export async function createInvitation(
     request: CreateInvitationRequest,
     accessToken: string
@@ -31,9 +29,7 @@ export async function createInvitation(
     return response.json();
 }
 
-/**
- * 초대 링크 검증 및 게스트 세션 생성 (공개)
- */
+
 export async function verifyInvitation(token: string): Promise<InvitationVerificationResponse> {
     const response = await fetch(`${API_BASE}/invitations/${token}`, {
         method: 'GET',

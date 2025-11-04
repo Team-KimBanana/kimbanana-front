@@ -48,7 +48,6 @@ const MainLayout: React.FC = () => {
     const [isGuest, setIsGuest] = useState(false);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        // 게스트 토큰이 있으면 게스트 토큰을 우선 사용, 없으면 일반 토큰 사용
         const token = guestToken || await getAuthToken();
         const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -107,7 +106,6 @@ const MainLayout: React.FC = () => {
         if (isAuthenticated || hasAccessToken) {
             setGuestToken(null);
             setIsGuest(false);
-            // 정식 사용자 세션에서는 게스트 토큰 정리
             sessionStorage.removeItem(`guestToken_${presentationId}`);
             return;
         }
@@ -121,9 +119,7 @@ const MainLayout: React.FC = () => {
                     if (result.valid && result.guest_token) {
                         setGuestToken(result.guest_token);
                         setIsGuest(true);
-                        // sessionStorage 사용 (탭별로 독립적, 프레젠테이션별로 구분)
                         sessionStorage.setItem(guestTokenKey, result.guest_token);
-                        // URL에서 invite 파라미터 제거 (선택사항)
                         const newSearchParams = new URLSearchParams(searchParams);
                         newSearchParams.delete('invite');
                         const newUrl = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
@@ -133,25 +129,20 @@ const MainLayout: React.FC = () => {
                     }
                 })
                 .catch((error) => {
-                    console.error("초대 링크 검증 실패:", error);
                     alert("초대 링크 검증에 실패했습니다.");
                 });
         } else {
-            // invite 파라미터가 없으면 저장된 게스트 토큰 복원 시도 (sessionStorage에서)
             const storedGuestToken = sessionStorage.getItem(guestTokenKey);
             if (storedGuestToken) {
-                // 저장된 게스트 토큰이 있으면 복원 (페이지 새로고침 시, 같은 탭)
                 setGuestToken(storedGuestToken);
                 setIsGuest(true);
             } else {
-                // 게스트 토큰이 없으면 게스트 모드 해제
                 setGuestToken(null);
                 setIsGuest(false);
             }
         }
     }, [searchParams, presentationId, isAuthenticated]);
 
-    // 썸네일 관리 훅
     const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
         const blob = dataURLtoBlob(dataUrl);
         const form = new FormData();
@@ -231,18 +222,14 @@ const MainLayout: React.FC = () => {
                 token
             );
 
-            // 초대 링크를 클립보드에 복사
             try {
                 await navigator.clipboard.writeText(invitation.invitation_url);
                 alert("초대 링크가 클립보드에 복사되었습니다!");
             } catch (err) {
-                // 클립보드 API가 실패하면 수동으로 선택 가능하도록 텍스트 표시
                 const fallbackText = `초대 링크: ${invitation.invitation_url}`;
                 alert(fallbackText);
-                console.error("클립보드 복사 실패:", err);
             }
         } catch (error) {
-            console.error("초대 링크 생성 실패:", error);
             alert(error instanceof Error ? error.message : "초대 링크 생성에 실패했습니다.");
         }
     };
@@ -284,7 +271,7 @@ const MainLayout: React.FC = () => {
 
         try {
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
-            if (!res.ok) { console.error("슬라이드 불러오기 실패", res.status); return; }
+            if (!res.ok) { return; }
             const json = await res.json();
             const serverTitle = json?.presentation?.presentation_title ?? json?.presentation_title ?? json?.title ?? "";
             setPresentationTitle(serverTitle);
@@ -353,7 +340,6 @@ const MainLayout: React.FC = () => {
             setSlideData(mapObj);
             setCurrentSlide(prev => orders.find(o => o.id === prev)?.id ?? orders[0]?.id ?? "");
         } catch (err) {
-            console.error("슬라이드 fetch 중 오류:", err);
         }
     }, [API_BASE, fetchWithAuth, isDemo, presentationId]);
 
@@ -375,19 +361,16 @@ const MainLayout: React.FC = () => {
             const ids = yOrder.toArray();
             setSlides(ids.map((id, i) => ({ id, order: i + 1 })));
 
-            // 모든 슬라이드의 썸네일 업데이트 (데이터 변경 감지 포함)
             ids.forEach((id, idx) => {
                 if (mirror[id]) {
                     scheduleThumbnail(id, mirror[id], idx === 0);
                 }
             });
             
-            // 모든 슬라이드에 대해 WebSocket 구독 관리
             if (stompClientRef.current?.connected) {
                 const currentSubs = new Set(allSlideSubsRef.current.keys());
                 const newIds = new Set(ids);
                 
-                // 더 이상 존재하지 않는 슬라이드 구독 해제
                 currentSubs.forEach(slideId => {
                     if (!newIds.has(slideId)) {
                         allSlideSubsRef.current.get(slideId)?.unsubscribe();
@@ -432,9 +415,7 @@ const MainLayout: React.FC = () => {
                                     } finally {
                                         isApplyingRemoteUpdate.current = false;
                                     }
-                                } catch (e) { 
-                                    console.error(`슬라이드 ${slideId} 수신 처리 오류:`, e); 
-                                }
+                                } catch (e) {}
                             }
                         );
                         allSlideSubsRef.current.set(slideId, sub);
@@ -480,23 +461,15 @@ const MainLayout: React.FC = () => {
                         destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
                         body
                     });
-                } catch (e) { console.error("WebSocket 데이터 전송 실패:", e); }
+                } catch (e) {}
                 debounceTimerRef.current = null;
             }, 250);
         };
 
         ydoc.on("update", handleYUpdate);
 
-        // 게스트 토큰이 있으면 게스트 토큰 사용, 없으면 일반 토큰 사용
         const tokenPromise = guestToken ? Promise.resolve(guestToken) : getAuthToken();
         tokenPromise.then((token) => {
-            console.log('STOMP 연결 시도:', {
-                brokerURL: WS_URL,
-                hasToken: !!token,
-                isGuest: !!guestToken,
-                hasCookies: document.cookie.length > 0,
-            });
-
             const client = new Client({
                 brokerURL: WS_URL,
                 reconnectDelay: 5000,
@@ -548,23 +521,12 @@ const MainLayout: React.FC = () => {
                                 if (newTitle) document.title = `${newTitle} - Kimbanana`;
                             }
                         }
-                    } catch (e) { console.error("구조 메시지 처리 오류:", e); }
+                    } catch (e) {}
                 });
 
                 fetchSlides();
 
                 resubscribeSlideChannel(client);
-            };
-
-            client.onStompError = (frame) => {
-                console.error("STOMP 에러:", {
-                    command: frame.command,
-                    headers: frame.headers,
-                    body: frame.body,
-                });
-            };
-            client.onWebSocketError = (event) => {
-                console.error("WebSocket 연결 에러:", event);
             };
 
             client.activate();
@@ -616,13 +578,12 @@ const MainLayout: React.FC = () => {
                         yTexts.insert(0, normalizedData.texts);
                     }, "remote-slide-apply");
                     
-                    // 원격 업데이트 후 해당 슬라이드 썸네일 강제 업데이트
                     const isFirst = slides[0]?.id === slideId;
                     scheduleThumbnail(slideId, normalizedData, isFirst, true);
                 } finally {
                     isApplyingRemoteUpdate.current = false;
                 }
-            } catch (e) { console.error("슬라이드 수신 처리 오류:", e); }
+            } catch (e) {}
         });
     };
 
@@ -737,7 +698,6 @@ const MainLayout: React.FC = () => {
 
             setCurrentSlide(newId);
         } catch (err) {
-            console.error("슬라이드 추가 실패:", err);
         }
     };
 
@@ -925,14 +885,11 @@ const MainLayout: React.FC = () => {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) {
-                const detail = await res.text().catch(()=> "");
-                console.error("히스토리 저장 실패:", res.status, detail);
                 alert(`히스토리 저장 실패 (${res.status})`);
                 return false;
             }
             return true;
         } catch (err) {
-            console.error("히스토리 저장 중 오류:", err);
             alert("히스토리 저장 중 오류가 발생");
             return false;
         }
@@ -947,7 +904,6 @@ const MainLayout: React.FC = () => {
             });
             setPresentationTitle(title);
         } catch (err) {
-            console.error("프레젠테이션 제목 업데이트 실패:", err);
         }
     };
 
