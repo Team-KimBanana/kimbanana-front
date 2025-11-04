@@ -29,9 +29,9 @@ const toAbsolute = (url?: string | null) => {
 
 const Workspace: React.FC = () => {
     const navigate = useNavigate();
-    const { isAuthenticated, user } = useAuth();
+    const { isAuthenticated, isLoading: authLoading, user, loadUserFromOAuth } = useAuth();
     const [presentations, setPresentations] = useState<Presentation[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [listLoading, setListLoading] = useState(false);
     const [search, setSearch] = useState('');
     const [isLoginModalOpen, setLoginModalOpen] = useState(false);
     const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
@@ -91,7 +91,7 @@ const Workspace: React.FC = () => {
 
     const fetchPresentations = async () => {
         try {
-            setIsLoading(true);
+            setListLoading(true);
             setError(null);
 
             const headers: Record<string, string> = {
@@ -116,7 +116,7 @@ const Workspace: React.FC = () => {
             const response = await fetch(url, {
                 method: 'GET',
                 headers,
-                // credentials: 'include' 제거 (쿠키 없이 토큰만 사용)
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -181,7 +181,7 @@ const Workspace: React.FC = () => {
             console.error('프레젠테이션 목록 조회 실패:', err);
             setError('프레젠테이션을 불러오는데 실패했습니다.');
         } finally {
-            setIsLoading(false);
+            setListLoading(false);
         }
     };
 
@@ -254,17 +254,20 @@ const Workspace: React.FC = () => {
     };
 
     useEffect(() => {
-        if (isAuthenticated) {
-            fetchPresentations();
-        } else {
-            setIsLoading(false);
+        if (!isAuthenticated) {
+            loadUserFromOAuth().catch(() => {});
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, loadUserFromOAuth]);
+
+    useEffect(() => {
+        if (!authLoading && isAuthenticated) {
+            fetchPresentations();
+        }
+        }, [authLoading, isAuthenticated]);
 
     useEffect(() => {
         setCurrentPage(0);
     }, [search]);
-
 
     /* 로그인 로직 추가시 인증 구현
         const handleCreatePresentation = () => {
@@ -350,7 +353,7 @@ const Workspace: React.FC = () => {
         }));
     };
 
-    if (isLoading) {
+    if (authLoading || listLoading) {
         return (
             <div className="workspace-loading">
                 <div className="loading-spinner"></div>
@@ -639,4 +642,4 @@ const Workspace: React.FC = () => {
     );
 };
 
-export default Workspace; 
+export default Workspace;

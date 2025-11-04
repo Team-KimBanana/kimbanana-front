@@ -28,7 +28,7 @@ type AuthAction =
 const initialState: AuthState = {
     user: null,
     isAuthenticated: false,
-    isLoading: false,
+    isLoading: true,
     error: null,
 };
 
