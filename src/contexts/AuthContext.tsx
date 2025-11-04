@@ -170,8 +170,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
+            // 1. 먼저 /auth/profile에서 사용자 정보 조회
             console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
-            const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+            const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -180,36 +181,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
 
             console.log('OAuth 사용자 정보 응답:', {
-                status: response.status,
-                ok: response.ok,
-                statusText: response.statusText
+                status: profileResponse.status,
+                ok: profileResponse.ok,
+                statusText: profileResponse.statusText
             });
 
-            if (response.ok) {
-                const data: UserInfoWithTokens = await response.json();
-                
-                // 토큰이 응답에 포함되어 있으면 localStorage에 저장
-                if (data.accessToken && data.refreshToken) {
-                    localStorage.setItem('accessToken', data.accessToken);
-                    localStorage.setItem('refreshToken', data.refreshToken);
-                    refreshRetryCount.current = 0;
-                    console.log('OAuth 토큰 저장 완료');
-                }
-                
-                const user: User = {
-                    id: data.id,
-                    email: data.email,
-                    name: data.name,
-                    profileImage: undefined,
-                    createdAt: new Date().toISOString(),
-                };
-                dispatch({ type: 'LOAD_USER', payload: user });
-                return true;
-            } else {
-                const errorText = await response.text().catch(() => '');
-                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', response.status, errorText);
+            if (!profileResponse.ok) {
+                const errorText = await profileResponse.text().catch(() => '');
+                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', profileResponse.status, errorText);
                 return false;
             }
+
+            const profileData: UserInfoWithTokens = await profileResponse.json();
+            
+            // 2. 토큰이 응답에 포함되어 있으면 바로 저장
+            if (profileData.accessToken && profileData.refreshToken) {
+                localStorage.setItem('accessToken', profileData.accessToken);
+                localStorage.setItem('refreshToken', profileData.refreshToken);
+                refreshRetryCount.current = 0;
+                console.log('OAuth 토큰 저장 완료 (profile 응답에서)');
+            } else {
+                // 3. 토큰이 없으면 /api/auth/me 엔드포인트를 호출해서 토큰 받아오기
+                console.log('OAuth 토큰이 profile 응답에 없음, /api/auth/me 호출 시도');
+                try {
+                    const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'include',
+                    });
+
+                    if (meResponse.ok) {
+                        const meData: UserInfoWithTokens = await meResponse.json();
+                        if (meData.accessToken && meData.refreshToken) {
+                            localStorage.setItem('accessToken', meData.accessToken);
+                            localStorage.setItem('refreshToken', meData.refreshToken);
+                            refreshRetryCount.current = 0;
+                            console.log('OAuth 토큰 저장 완료 (/api/auth/me에서)');
+                        } else {
+                            console.warn('/api/auth/me 응답에도 토큰이 없음');
+                        }
+                    } else {
+                        console.warn('/api/auth/me 호출 실패:', meResponse.status);
+                    }
+                } catch (meError) {
+                    console.error('/api/auth/me 호출 중 오류:', meError);
+                }
+            }
+            
+            // 4. 사용자 정보 저장
+            const user: User = {
+                id: profileData.id,
+                email: profileData.email,
+                name: profileData.name,
+                profileImage: undefined,
+                createdAt: new Date().toISOString(),
+            };
+            dispatch({ type: 'LOAD_USER', payload: user });
+            return true;
         } catch (error) {
             console.error('OAuth 사용자 정보 조회 중 오류:', error);
             return false;

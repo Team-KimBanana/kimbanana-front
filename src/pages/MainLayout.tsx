@@ -47,8 +47,8 @@ const MainLayout: React.FC = () => {
         const accessToken = await getAuthToken();
         const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
         if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-        return fetch(url, { 
-            ...options, 
+        return fetch(url, {
+            ...options,
             headers,
             credentials: 'include',
         });
@@ -190,7 +190,7 @@ const MainLayout: React.FC = () => {
                 if (data) renderThumbnail(id, data, idx===0);
             });
             return;
-            }
+        }
 
         try {
             const res = await fetchWithAuth(`${API_BASE}/presentations/${presentationId}/slides`);
@@ -306,15 +306,15 @@ const MainLayout: React.FC = () => {
             const shapes = (ySlide.get("shapes") as Y.Array<Shape> | undefined)?.toJSON?.() || [];
             const texts  = (ySlide.get("texts")  as Y.Array<TextItem> | undefined)?.toJSON?.() || [];
 
-        const currentSlideOrder = slides.find(s => s.id === currentSlide)?.order ?? 9999;
-        const offset = new Date().getTimezoneOffset() * 60000;
-        const lastRevisionDate = new Date(Date.now() - offset).toISOString().slice(0, -1);
+            const currentSlideOrder = slides.find(s => s.id === currentSlide)?.order ?? 9999;
+            const offset = new Date().getTimezoneOffset() * 60000;
+            const lastRevisionDate = new Date(Date.now() - offset).toISOString().slice(0, -1);
 
-        const payload = {
-            slide_id: currentSlide,
-            order: currentSlideOrder,
+            const payload = {
+                slide_id: currentSlide,
+                order: currentSlideOrder,
                 last_revision_user_id: (user as any)?.id || "anonymous",
-            last_revision_date: lastRevisionDate,
+                last_revision_date: lastRevisionDate,
                 data: JSON.stringify({ shapes: normalizeShapes(shapes as Shape[]), texts: normalizeTexts(texts as TextItem[]) }),
             };
 
@@ -323,55 +323,41 @@ const MainLayout: React.FC = () => {
             lastBroadcastData.current = body;
 
             if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = setTimeout(() => {
+            debounceTimerRef.current = setTimeout(() => {
                 try {
-            stompClientRef.current?.publish({
+                    stompClientRef.current?.publish({
                         destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
                         body
-            });
+                    });
                 } catch (e) { console.error("WebSocket 데이터 전송 실패:", e); }
-            debounceTimerRef.current = null;
+                debounceTimerRef.current = null;
             }, 250);
         };
 
         ydoc.on("update", handleYUpdate);
 
-        // STOMP 클라이언트 초기화 (beforeConnect에서 최신 토큰을 가져옴)
-        const client = new Client({
-            brokerURL: WS_URL,
-            reconnectDelay: 5000,
-            // 초기 connectHeaders는 빈 객체로 설정 (beforeConnect에서 최신 토큰 주입)
-            connectHeaders: {},
-            // 매 연결/재연결 시 최신 토큰을 가져와서 헤더에 주입
-            beforeConnect: async () => {
-                const token = await getAuthToken();
-                if (token) {
-                    client.connectHeaders = { 'Authorization': `Bearer ${token}` };
-                    console.log('STOMP 연결 시도 (토큰 포함):', {
-                        brokerURL: WS_URL,
-                        hasToken: true,
-                        hasCookies: document.cookie.length > 0,
-                    });
-                } else {
-                    client.connectHeaders = {};
-                    console.log('STOMP 연결 시도 (토큰 없음):', {
-                        brokerURL: WS_URL,
-                        hasToken: false,
-                        hasCookies: document.cookie.length > 0,
-                    });
-                }
-            },
-        });
+        getAuthToken().then((token) => {
+            console.log('STOMP 연결 시도:', {
+                brokerURL: WS_URL,
+                hasToken: !!token,
+                hasCookies: document.cookie.length > 0,
+            });
 
-        client.onConnect = () => {
-            stompClientRef.current = client;
+            const client = new Client({
+                brokerURL: WS_URL,
+                reconnectDelay: 5000,
+                connectHeaders: token ? { 'Authorization': `Bearer ${token}` } : {},
+            });
 
-            structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
-                try {
-            const parsed = JSON.parse(message.body);
+            client.onConnect = () => {
+                stompClientRef.current = client;
+
+                structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
+                    try {
+                        const parsed = JSON.parse(message.body);
                         const { type, payload } = parsed || {};
 
-            if (type === "SLIDE_ADD") {
+                        if (type === "SLIDE_ADD") {
                             const { slide_id } = payload || {};
                             yDocRef.current?.transact(() => {
                                 if (!yMapRef.current?.has(slide_id)) {
@@ -416,42 +402,20 @@ const MainLayout: React.FC = () => {
                 resubscribeSlideChannel(client);
             };
 
-        client.onStompError = (frame) => {
-            console.error("STOMP 에러:", {
-                command: frame.command,
-                headers: frame.headers,
-                body: frame.body,
-            });
-        };
-        client.onWebSocketError = (event) => {
-            console.error("WebSocket 연결 에러:", event);
-        };
+            client.onStompError = (frame) => {
+                console.error("STOMP 에러:", {
+                    command: frame.command,
+                    headers: frame.headers,
+                    body: frame.body,
+                });
+            };
+            client.onWebSocketError = (event) => {
+                console.error("WebSocket 연결 에러:", event);
+            };
 
-        // 인증이 완료될 때까지 STOMP 연결을 지연
-        // OAuth 로그인 시 토큰이 준비될 때까지 기다림
-        const initStomp = async () => {
-            // 토큰이 준비될 때까지 최대 5초 대기
-            let retries = 0;
-            const maxRetries = 50; // 5초 (100ms * 50)
-            
-            while (retries < maxRetries) {
-                const token = await getAuthToken();
-                if (token) {
-                    // 토큰이 준비되면 연결 시작
-                    client.activate();
-                    return;
-                }
-                // 토큰이 없으면 100ms 대기 후 재시도
-                await new Promise(resolve => setTimeout(resolve, 100));
-                retries++;
-            }
-            
-            // 최대 재시도 후에도 토큰이 없으면 토큰 없이 연결 시도 (비로그인 사용자)
-            console.warn('토큰을 가져올 수 없어 토큰 없이 STOMP 연결 시도');
             client.activate();
-        };
-        
-        initStomp();
+            stompClientRef.current = client;
+        });
 
         return () => {
             yMapRef.current?.unobserveDeep(applyDocToReact);
@@ -678,19 +642,19 @@ const MainLayout: React.FC = () => {
         const ySlide = getActiveYSlide();
         if (!ySlide) return;
         yDocRef.current?.transact(() => {
-        if (selectedShapeId != null) {
+            if (selectedShapeId != null) {
                 const yShapes = ySlide.get("shapes") as Y.Array<Shape>;
                 const idx = yShapes.toArray().findIndex(s => String(s.id) === String(selectedShapeId));
                 if (idx !== -1) yShapes.delete(idx, 1);
-            setSelectedShapeId(null);
-            return;
-        }
-        if (selectedTextId != null) {
+                setSelectedShapeId(null);
+                return;
+            }
+            if (selectedTextId != null) {
                 const yTexts = ySlide.get("texts") as Y.Array<TextItem>;
                 const idx = yTexts.toArray().findIndex(t => String(t.id) === String(selectedTextId));
                 if (idx !== -1) yTexts.delete(idx, 1);
-            setSelectedTextId(null);
-        }
+                setSelectedTextId(null);
+            }
         }, "delete-element");
     };
 
@@ -838,12 +802,12 @@ const MainLayout: React.FC = () => {
             <div className="content">
                 <Sidebar
                     variant="main"
-                         slides={slides.map(s => s.id)}
-                         currentSlide={currentSlide}
-                         setCurrentSlide={setCurrentSlide}
-                         onAddSlide={handleAddSlide}
-                         thumbnails={thumbnails}
-                         onReorderSlides={handleReorderSlides}
+                    slides={slides.map(s => s.id)}
+                    currentSlide={currentSlide}
+                    setCurrentSlide={setCurrentSlide}
+                    onAddSlide={handleAddSlide}
+                    thumbnails={thumbnails}
+                    onReorderSlides={handleReorderSlides}
                 />
                 <div className="canvas-container">
                     {currentSlide && slideData[currentSlide] && (
