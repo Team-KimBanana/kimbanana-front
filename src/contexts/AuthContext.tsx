@@ -245,8 +245,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return false;
         }
     }, [API_BASE_URL]);
-
-    const handleOAuthCallback = useCallback(async () => {
+    useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
@@ -274,8 +273,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 if (oAuthSuccessCallback.current) {
                     oAuthSuccessCallback.current();
                 }
-            } else {
-            }
+            } else { /* empty */ }
         }
     }, [loadUserFromOAuth]);
 
