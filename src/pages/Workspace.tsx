@@ -250,8 +250,9 @@ const Workspace: React.FC = () => {
         if (!isAuthenticated && !authLoading) {
             const urlParams = new URLSearchParams(window.location.search);
             const oauthSuccess = urlParams.get('oauth_success');
-            if (oauthSuccess === 'true' || oauthSuccess === '1' || localStorage.getItem('accessToken')) {
-                loadUserFromOAuth().catch(() => {});
+            const isOAuthCallback = oauthSuccess === 'true' || oauthSuccess === '1';
+            if (isOAuthCallback || localStorage.getItem('accessToken')) {
+                loadUserFromOAuth(isOAuthCallback).catch(() => {});
             }
         }
     }, [isAuthenticated, authLoading, loadUserFromOAuth]);

@@ -169,10 +169,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, [API_BASE_URL, attemptTokenRefresh]);
 
-    const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-            return false;
+    const loadUserFromOAuth = useCallback(async (isOAuthCallback: boolean = false): Promise<boolean> => {
+        // OAuth 콜백이 아닌 경우(명시적 로그아웃 후 등)에는 토큰이 없으면 서버에 요청하지 않음
+        // OAuth 콜백인 경우에는 토큰이 아직 없을 수 있으므로 서버에 요청해야 함
+        if (!isOAuthCallback) {
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                return false;
+            }
         }
         
         try {
@@ -221,7 +225,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const oauthError = urlParams.get('oauth_error');
 
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
-            loadUserFromOAuth().then((success) => {
+            loadUserFromOAuth(true).then((success) => {
                 if (success) {
                     if (oAuthSuccessCallback.current) {
                         oAuthSuccessCallback.current();
