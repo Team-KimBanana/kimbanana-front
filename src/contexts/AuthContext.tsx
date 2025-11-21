@@ -209,20 +209,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return false;
         }
     }, [API_BASE_URL]);
-    useCallback(async () => {
+
+    useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
 
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
+            loadUserFromOAuth().then((success) => {
+                if (success) {
+                    if (oAuthSuccessCallback.current) {
+                        oAuthSuccessCallback.current();
+                    }
+                } else {
+                    dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
                 }
-            } else {
-                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
-            }
+            });
 
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
@@ -231,13 +233,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
-        } else {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
-                }
-            } else { /* empty */ }
         }
     }, [loadUserFromOAuth]);
 

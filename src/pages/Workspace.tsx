@@ -29,7 +29,7 @@ const toAbsolute = (url?: string | null) => {
 
 const Workspace: React.FC = () => {
     const navigate = useNavigate();
-    const { isAuthenticated, isLoading: authLoading, user, loadUserFromOAuth } = useAuth();
+    const { isAuthenticated, isLoading: authLoading, user } = useAuth();
     const [presentations, setPresentations] = useState<Presentation[]>([]);
     const [listLoading, setListLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -95,7 +95,7 @@ const Workspace: React.FC = () => {
             setError(null);
 
             const headers: Record<string, string> = {
-                'Accept': '*/*', // Postman과 동일하게
+                'Accept': '*/*',
             };
 
             const accessToken = localStorage.getItem('accessToken');
@@ -246,11 +246,6 @@ const Workspace: React.FC = () => {
         }
     };
 
-    useEffect(() => {
-        if (!isAuthenticated) {
-            loadUserFromOAuth().catch(() => {});
-        }
-    }, [isAuthenticated, loadUserFromOAuth]);
 
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
@@ -261,17 +256,6 @@ const Workspace: React.FC = () => {
     useEffect(() => {
         setCurrentPage(0);
     }, [search]);
-
-    /* 로그인 로직 추가시 인증 구현
-        const handleCreatePresentation = () => {
-            if (!isAuthenticated) {
-                setLoginModalOpen(true);
-                return;
-            }
-            const newId = Date.now().toString();
-            navigate(`/editor/${newId}`);
-        };
-    */
 
     const handleCreatePresentation = async () => {
         try {

@@ -526,8 +526,19 @@ const MainLayout: React.FC = () => {
                 resubscribeSlideChannel(client);
             };
 
+            client.onStompError = (frame) => {
+                if (client.connected) {
+                    console.warn('STOMP 에러:', frame);
+                }
+            };
+
+            client.onWebSocketError = (event) => {
+                if (!client.connected && !client.active) {
+                    console.error('WebSocket 연결 실패:', event);
+                }
+            };
+
             client.activate();
-            stompClientRef.current = client;
         });
 
         return () => {
