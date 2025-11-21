@@ -169,16 +169,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, [API_BASE_URL, attemptTokenRefresh]);
 
-    const loadUserFromOAuth = useCallback(async (isOAuthCallback: boolean = false): Promise<boolean> => {
-        // OAuth 콜백이 아닌 경우(명시적 로그아웃 후 등)에는 토큰이 없으면 서버에 요청하지 않음
-        // OAuth 콜백인 경우에는 토큰이 아직 없을 수 있으므로 서버에 요청해야 함
-        if (!isOAuthCallback) {
-            const token = localStorage.getItem('accessToken');
-            if (!token) {
-                return false;
-            }
-        }
-        
+    const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
             console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
             const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
@@ -218,30 +209,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return false;
         }
     }, [API_BASE_URL]);
-
-    useEffect(() => {
+    useCallback(async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
 
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
-            loadUserFromOAuth(true).then((success) => {
-                if (success) {
-                    if (oAuthSuccessCallback.current) {
-                        oAuthSuccessCallback.current();
-                    }
-                } else {
-                    dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
+            const success = await loadUserFromOAuth();
+            if (success) {
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
                 }
+            } else {
+                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
+            }
 
-                const newUrl = window.location.pathname;
-                window.history.replaceState({}, document.title, newUrl);
-            });
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
         } else if (oauthError) {
             dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
 
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
+        } else {
+            const success = await loadUserFromOAuth();
+            if (success) {
+                if (oAuthSuccessCallback.current) {
+                    oAuthSuccessCallback.current();
+                }
+            } else { /* empty */ }
         }
     }, [loadUserFromOAuth]);
 
