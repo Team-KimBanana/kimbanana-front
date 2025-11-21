@@ -247,25 +247,31 @@ const Workspace: React.FC = () => {
     };
 
     useEffect(() => {
-        if (!isAuthenticated && !authLoading) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const oauthSuccess = urlParams.get('oauth_success');
-            const isOAuthCallback = oauthSuccess === 'true' || oauthSuccess === '1';
-            if (isOAuthCallback || localStorage.getItem('accessToken')) {
-                loadUserFromOAuth(isOAuthCallback).catch(() => {});
-            }
+        if (!isAuthenticated) {
+            loadUserFromOAuth().catch(() => {});
         }
-    }, [isAuthenticated, authLoading, loadUserFromOAuth]);
+    }, [isAuthenticated, loadUserFromOAuth]);
 
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
             fetchPresentations();
         }
-        }, [authLoading, isAuthenticated]);
+    }, [authLoading, isAuthenticated]);
 
     useEffect(() => {
         setCurrentPage(0);
     }, [search]);
+
+    /* 로그인 로직 추가시 인증 구현
+        const handleCreatePresentation = () => {
+            if (!isAuthenticated) {
+                setLoginModalOpen(true);
+                return;
+            }
+            const newId = Date.now().toString();
+            navigate(`/editor/${newId}`);
+        };
+    */
 
     const handleCreatePresentation = async () => {
         try {
