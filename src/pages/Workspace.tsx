@@ -247,10 +247,14 @@ const Workspace: React.FC = () => {
     };
 
     useEffect(() => {
-        if (!isAuthenticated) {
-            loadUserFromOAuth().catch(() => {});
+        if (!isAuthenticated && !authLoading) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const oauthSuccess = urlParams.get('oauth_success');
+            if (oauthSuccess === 'true' || oauthSuccess === '1' || localStorage.getItem('accessToken')) {
+                loadUserFromOAuth().catch(() => {});
+            }
         }
-    }, [isAuthenticated, loadUserFromOAuth]);
+    }, [isAuthenticated, authLoading, loadUserFromOAuth]);
 
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
@@ -261,17 +265,6 @@ const Workspace: React.FC = () => {
     useEffect(() => {
         setCurrentPage(0);
     }, [search]);
-
-    /* 로그인 로직 추가시 인증 구현
-        const handleCreatePresentation = () => {
-            if (!isAuthenticated) {
-                setLoginModalOpen(true);
-                return;
-            }
-            const newId = Date.now().toString();
-            navigate(`/editor/${newId}`);
-        };
-    */
 
     const handleCreatePresentation = async () => {
         try {

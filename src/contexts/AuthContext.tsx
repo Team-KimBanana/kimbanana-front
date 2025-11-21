@@ -170,6 +170,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [API_BASE_URL, attemptTokenRefresh]);
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            return false;
+        }
+        
         try {
             console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
             const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
@@ -192,32 +197,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 refreshRetryCount.current = 0;
                 console.log('OAuth 토큰 저장 완료 (profile 응답에서)');
             } else {
-                console.log('OAuth 토큰이 profile 응답에 없음, /api/auth/me 호출 시도');
-                try {
-                    const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                        },
-                        credentials: 'include',
-                    });
-
-                    if (meResponse.ok) {
-                        const meData: UserInfoWithTokens = await meResponse.json();
-                        if (meData.accessToken && meData.refreshToken) {
-                            localStorage.setItem('accessToken', meData.accessToken);
-                            localStorage.setItem('refreshToken', meData.refreshToken);
-                            refreshRetryCount.current = 0;
-                            console.log('OAuth 토큰 저장 완료 (/api/auth/me에서)');
-                        } else {
-                            console.warn('/api/auth/me 응답에도 토큰이 없음');
-                        }
-                    } else {
-                        console.warn('/api/auth/me 호출 실패:', meResponse.status);
-                    }
-                } catch (meError) {
-                    console.error('/api/auth/me 호출 중 오류:', meError);
-                }
+                console.warn('OAuth 토큰이 profile 응답에 없음');
             }
 
             const user: User = {
@@ -234,35 +214,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return false;
         }
     }, [API_BASE_URL]);
-    useCallback(async () => {
+
+    useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const oauthSuccess = urlParams.get('oauth_success');
         const oauthError = urlParams.get('oauth_error');
 
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
+            loadUserFromOAuth().then((success) => {
+                if (success) {
+                    if (oAuthSuccessCallback.current) {
+                        oAuthSuccessCallback.current();
+                    }
+                } else {
+                    dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
                 }
-            } else {
-                dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인 후 사용자 정보를 가져오는데 실패했습니다.' });
-            }
 
-            const newUrl = window.location.pathname;
-            window.history.replaceState({}, document.title, newUrl);
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+            });
         } else if (oauthError) {
             dispatch({ type: 'LOGIN_FAILURE', payload: 'OAuth 로그인에 실패했습니다.' });
 
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
-        } else {
-            const success = await loadUserFromOAuth();
-            if (success) {
-                if (oAuthSuccessCallback.current) {
-                    oAuthSuccessCallback.current();
-                }
-            } else { /* empty */ }
         }
     }, [loadUserFromOAuth]);
 
