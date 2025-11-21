@@ -163,6 +163,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } else {
                 await attemptTokenRefresh(false, loadUser);
             }
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             clearTokens();
         }
@@ -170,7 +171,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const loadUserFromOAuth = useCallback(async (): Promise<boolean> => {
         try {
-            // 1. 먼저 /auth/profile에서 사용자 정보 조회
             console.log('OAuth 사용자 정보 조회 시도:', `${API_BASE_URL}/auth/profile`);
             const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
                 method: 'GET',
@@ -180,28 +180,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 credentials: 'include',
             });
 
-            console.log('OAuth 사용자 정보 응답:', {
-                status: profileResponse.status,
-                ok: profileResponse.ok,
-                statusText: profileResponse.statusText
-            });
-
             if (!profileResponse.ok) {
-                const errorText = await profileResponse.text().catch(() => '');
-                console.error('OAuth 로그인 후 사용자 정보 조회 실패:', profileResponse.status, errorText);
                 return false;
             }
 
             const profileData: UserInfoWithTokens = await profileResponse.json();
 
-            // 2. 토큰이 응답에 포함되어 있으면 바로 저장
             if (profileData.accessToken && profileData.refreshToken) {
                 localStorage.setItem('accessToken', profileData.accessToken);
                 localStorage.setItem('refreshToken', profileData.refreshToken);
                 refreshRetryCount.current = 0;
                 console.log('OAuth 토큰 저장 완료 (profile 응답에서)');
             } else {
-                // 3. 토큰이 없으면 /api/auth/me 엔드포인트를 호출해서 토큰 받아오기
                 console.log('OAuth 토큰이 profile 응답에 없음, /api/auth/me 호출 시도');
                 try {
                     const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
@@ -230,7 +220,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             }
 
-            // 4. 사용자 정보 저장
             const user: User = {
                 id: profileData.id,
                 email: profileData.email,
@@ -279,11 +268,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     useEffect(() => {
         (async () => {
-            // 1순위: 저장된 Bearer 토큰
             const token = localStorage.getItem('accessToken');
+            if (!token) {
+                dispatch({ type: 'LOGOUT' });
+                return;
+            }
             try {
                 const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    headers: { Authorization: `Bearer ${token}` },
                     credentials: "include",
                 });
                 if (res.ok) {
@@ -320,6 +312,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 try {
                     await loadUser(data.accessToken);
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 } catch (error) {
                     console.warn('프로필 조회 실패, 임시 사용자 정보 생성');
                     const tempUser: User = {
@@ -353,6 +346,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 dispatch({ type: 'LOGIN_FAILURE', payload: errorMessage });
                 return { success: false, error: errorMessage };
             }
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             const errorMessage = '네트워크 오류가 발생했습니다.';
             dispatch({ type: 'LOGIN_FAILURE', payload: errorMessage });
@@ -407,6 +401,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const logout = async (): Promise<void> => {
         clearTokens();
+        window.location.href = '/kimbanana/ui/';
     };
 
     const clearError = useCallback(() => {

@@ -98,10 +98,7 @@ const MainLayout: React.FC = () => {
 
     useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
 
-    // 초대 링크 검증 및 게스트 토큰 설정
     useEffect(() => {
-        // 정식 사용자가 로그인되어 있으면 게스트 토큰을 사용하지 않음
-        // accessToken도 함께 확인하여 더 확실하게
         const hasAccessToken = localStorage.getItem('accessToken');
         if (isAuthenticated || hasAccessToken) {
             setGuestToken(null);
@@ -224,6 +221,7 @@ const MainLayout: React.FC = () => {
             try {
                 await navigator.clipboard.writeText(invitation.invitation_url);
                 alert("초대 링크가 클립보드에 복사되었습니다!");
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
             } catch (err) {
                 const fallbackText = `초대 링크: ${invitation.invitation_url}`;
                 alert(fallbackText);
@@ -458,7 +456,8 @@ const MainLayout: React.FC = () => {
                         destination: `/app/slide.edit.presentation.${presentationId}.slide.${currentSlide}`,
                         body
                     });
-                } catch (e) {}
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                } catch (e) { /* empty */ }
                 debounceTimerRef.current = null;
             }, 250);
         };
@@ -518,7 +517,8 @@ const MainLayout: React.FC = () => {
                                 if (newTitle) document.title = `${newTitle} - Kimbanana`;
                             }
                         }
-                    } catch (e) {}
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    } catch (e) { /* empty */ }
                 });
 
                 fetchSlides();
@@ -580,7 +580,8 @@ const MainLayout: React.FC = () => {
                 } finally {
                     isApplyingRemoteUpdate.current = false;
                 }
-            } catch (e) {}
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            } catch (e) { /* empty */ }
         });
     };
 
@@ -694,8 +695,8 @@ const MainLayout: React.FC = () => {
             }, "add-slide");
 
             setCurrentSlide(newId);
-        } catch (err) {
-        }
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (err) { /* empty */ }
     };
 
     const handleDeleteSlide = async (slideId: string) => {
@@ -886,6 +887,7 @@ const MainLayout: React.FC = () => {
                 return false;
             }
             return true;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (err) {
             alert("히스토리 저장 중 오류가 발생");
             return false;
@@ -900,8 +902,8 @@ const MainLayout: React.FC = () => {
                 body: JSON.stringify({ presentation_id: presentationId, new_title: title }),
             });
             setPresentationTitle(title);
-        } catch (err) {
-        }
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (err) { /* empty */ }
     };
 
     return (

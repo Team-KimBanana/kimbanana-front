@@ -105,14 +105,8 @@ const Workspace: React.FC = () => {
             }
 
             const url = `${API_BASE_URL}/workspace/presentations/list`;
-            console.log('프레젠테이션 목록 요청:', {
-                url,
-                method: 'GET',
-                hasToken: !!accessToken,
-                headers,
-            });
 
-            // credentials: 'include' 제거 - 쿠키(JSESSIONID) 문제 가능성
+
             const response = await fetch(url, {
                 method: 'GET',
                 headers,
@@ -120,7 +114,6 @@ const Workspace: React.FC = () => {
             });
 
             if (!response.ok) {
-                // 에러 응답 본문 확인
                 let errorBody = '';
                 let errorMessage = '';
                 try {
