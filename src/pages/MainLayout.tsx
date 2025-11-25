@@ -8,7 +8,7 @@ import Sidebar from "../components/Sidebar/Sidebar.tsx";
 import Canvas from "../components/Canvas/Canvas.tsx";
 import Toolbar from "../components/Toolbar/Toolbar.tsx";
 import { useAuth } from "../contexts/AuthContext";
-import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder } from "../types/types.ts";
+import {Shape, TextItem, ReceivedSlide, SlideData, SlideOrder, ActiveUsersResponse } from "../types/types.ts";
 import useFullscreen from "../hooks/useFullscreen";
 import { useThumbnails } from "../hooks/useThumbnails";
 import { demoPresentations } from "../data/demoData";
@@ -74,6 +74,7 @@ const MainLayout: React.FC = () => {
     const [selectedShapeId, setSelectedShapeId] = useState<string | number | null>(null);
     const [selectedTextId, setSelectedTextId] = useState<string | number | null>(null);
     const [clipboardData, setClipboardData] = useState<{ shapes: Shape[]; texts: TextItem[] } | null>(null);
+    const [activeUsers, setActiveUsers] = useState<ActiveUsersResponse | null>(null);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const { isFullscreen, enter, exit } = useFullscreen(containerRef);
@@ -86,7 +87,9 @@ const MainLayout: React.FC = () => {
     const stompClientRef = useRef<Client | null>(null);
     const structureSubRef = useRef<StompSubscription | null>(null);
     const slideSubRef = useRef<StompSubscription | null>(null);
+    const usersSubRef = useRef<StompSubscription | null>(null);
     const allSlideSubsRef = useRef<Map<string, StompSubscription>>(new Map());
+    const joinedPresentationsRef = useRef<Set<string>>(new Set());
 
     const yDocRef = useRef<Y.Doc | null>(null);
     const yMapRef = useRef<YPresentationMap | null>(null);
@@ -99,17 +102,10 @@ const MainLayout: React.FC = () => {
     useEffect(() => setIsPresentationMode(isFullscreen), [isFullscreen]);
 
     useEffect(() => {
-        const hasAccessToken = localStorage.getItem('accessToken');
-        if (isAuthenticated || hasAccessToken) {
-            setGuestToken(null);
-            setIsGuest(false);
-            sessionStorage.removeItem(`guestToken_${presentationId}`);
-            return;
-        }
-
         const inviteToken = searchParams.get('invite');
         const guestTokenKey = `guestToken_${presentationId}`;
         
+
         if (inviteToken) {
             verifyInvitation(inviteToken)
                 .then((result) => {
@@ -122,21 +118,44 @@ const MainLayout: React.FC = () => {
                         const newUrl = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
                         window.history.replaceState({}, '', newUrl);
                     } else {
+                        console.error('[MainLayout] 초대 링크 검증 실패:', result.message);
+                        const newSearchParams = new URLSearchParams(searchParams);
+                        newSearchParams.delete('invite');
+                        const newUrl = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
+                        window.history.replaceState({}, '', newUrl);
                         alert(result.message || "초대 링크가 유효하지 않거나 만료되었습니다.");
                     }
                 })
-                .catch(() => {
+                .catch((error) => {
+                    console.error('[MainLayout] 초대 링크 검증 중 오류:', error);
+                    const newSearchParams = new URLSearchParams(searchParams);
+                    newSearchParams.delete('invite');
+                    const newUrl = window.location.pathname + (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
+                    window.history.replaceState({}, '', newUrl);
+                    alert("초대 링크 검증 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.");
                 });
-        } else {
-            const storedGuestToken = sessionStorage.getItem(guestTokenKey);
-            if (storedGuestToken) {
-                setGuestToken(storedGuestToken);
-                setIsGuest(true);
-            } else {
-                setGuestToken(null);
-                setIsGuest(false);
-            }
+            return;
         }
+
+        const storedGuestToken = sessionStorage.getItem(guestTokenKey);
+
+        if (storedGuestToken) {
+            setGuestToken(storedGuestToken);
+            setIsGuest(true);
+            return;
+        }
+
+        const hasAccessToken = localStorage.getItem('accessToken');
+
+        if (isAuthenticated || hasAccessToken) {
+            setGuestToken(null);
+            setIsGuest(false);
+            sessionStorage.removeItem(guestTokenKey);
+            return;
+        }
+
+        setGuestToken(null);
+        setIsGuest(false);
     }, [searchParams, presentationId, isAuthenticated]);
 
     const uploadFirstThumbnailToServer = useCallback(async (dataUrl: string) => {
@@ -464,8 +483,25 @@ const MainLayout: React.FC = () => {
 
         ydoc.on("update", handleYUpdate);
 
-        const tokenPromise = guestToken ? Promise.resolve(guestToken) : getAuthToken();
+        const inviteToken = searchParams.get('invite');
+        const guestTokenKey = `guestToken_${presentationId}`;
+        const storedGuestToken = sessionStorage.getItem(guestTokenKey);
+        const finalGuestToken = guestToken || storedGuestToken;
+        
+        if (inviteToken && !finalGuestToken) {
+            return;
+        }
+
+        if (stompClientRef.current?.connected) {
+            return;
+        }
+
+        const tokenPromise = finalGuestToken ? Promise.resolve(finalGuestToken) : getAuthToken();
         tokenPromise.then((token) => {
+            if (stompClientRef.current?.connected) {
+                return;
+            }
+
             const client = new Client({
                 brokerURL: WS_URL,
                 reconnectDelay: 5000,
@@ -474,6 +510,25 @@ const MainLayout: React.FC = () => {
 
             client.onConnect = () => {
                 stompClientRef.current = client;
+
+                if (!joinedPresentationsRef.current.has(presentationId)) {
+                    client.publish({
+                        destination: `/app/presentation.${presentationId}.join`,
+                        body: '',
+                    });
+                    joinedPresentationsRef.current.add(presentationId);
+                } else {
+                }
+
+                usersSubRef.current?.unsubscribe();
+                usersSubRef.current = client.subscribe(`/topic/presentation.${presentationId}.users`, (message) => {
+                    try {
+                        const data: ActiveUsersResponse = JSON.parse(message.body);
+                        setActiveUsers(data);
+                    } catch (e) {
+                        console.error('접속자 목록 파싱 실패:', e);
+                    }
+                });
 
                 structureSubRef.current = client.subscribe(`/topic/presentation.${presentationId}`, (message) => {
                     try {
@@ -548,14 +603,19 @@ const MainLayout: React.FC = () => {
 
             slideSubRef.current?.unsubscribe();
             structureSubRef.current?.unsubscribe();
+            usersSubRef.current?.unsubscribe();
             allSlideSubsRef.current.forEach(sub => sub.unsubscribe());
             allSlideSubsRef.current.clear();
             stompClientRef.current?.deactivate();
 
             stompClientRef.current = null;
+            // presentationId가 변경되면 해당 프레젠테이션의 join 상태 제거
+            joinedPresentationsRef.current.delete(presentationId);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [WS_URL, presentationId, fetchSlides, getAuthToken, guestToken, currentSlide, slides.length]);
+        // guestToken은 의존성 배열에서 제거: 변경되어도 이미 연결되어 있으면 재연결하지 않음
+        // 초대 링크 검증 완료 후 guestToken이 설정되면, useEffect 내부에서 sessionStorage를 확인하여 처리
+    }, [WS_URL, presentationId, fetchSlides, getAuthToken, currentSlide, slides.length]);
 
     const resubscribeSlideChannel = (client?: Client | null) => {
         const c = client ?? stompClientRef.current;
@@ -932,6 +992,7 @@ const MainLayout: React.FC = () => {
                 onDownloadPdf={handleDownloadPdf}
                 onShare={handleShare}
                 isGuest={isGuest}
+                activeUsers={activeUsers}
             />
             <div className="content">
                 <Sidebar

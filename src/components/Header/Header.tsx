@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import "./Header.css";
 import {Link, useNavigate, useParams} from "react-router-dom";
 import { Icon } from "@iconify/react";
 import { useAuth } from "../../contexts/AuthContext";
+import { ActiveUsersResponse } from "../../types/types";
 
 interface HeaderProps {
     variant: "main" | "history" | "workspace" | "login";
@@ -20,6 +21,7 @@ interface HeaderProps {
     onDownloadPdf?: () => Promise<void>;
     onShare?: () => Promise<void> | void;
     isGuest?: boolean;
+    activeUsers?: ActiveUsersResponse | null;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -38,12 +40,34 @@ const Header: React.FC<HeaderProps> = ({
                                            onDownloadPdf,
                                            onShare,
                                            isGuest = false,
+                                           activeUsers,
                                        }) => {
     const navigate = useNavigate();
     const { user, isAuthenticated, logout } = useAuth();
 
     const { id, presentationId: presentationIdParam } = useParams();
     const presentationId = presentationIdProp ?? presentationIdParam ?? id;
+
+    const getGuestColor = useMemo(() => {
+        const colorMap = new Map<string, string>();
+        const colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+            '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52BE80',
+            '#EC7063', '#5DADE2', '#F4D03F', '#AF7AC5', '#7FB3D3'
+        ];
+        
+        return (guestId: string): string => {
+            if (!colorMap.has(guestId)) {
+                let hash = 0;
+                for (let i = 0; i < guestId.length; i++) {
+                    hash = guestId.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                const index = Math.abs(hash) % colors.length;
+                colorMap.set(guestId, colors[index]);
+            }
+            return colorMap.get(guestId)!;
+        };
+    }, []);
 
     const handleLogout = () => {
         if (window.confirm("로그아웃 하시겠습니까?")) {
@@ -109,20 +133,43 @@ const Header: React.FC<HeaderProps> = ({
             )}
 
             {variant === "main" && (
-                <input
-                    type="text"
-                    className="title-input"
-                    placeholder="제목을 입력해주세요."
-                    value={title ?? ""}
-                    onChange={(e) => onTitleChange?.(e.target.value)}
-                    onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) onTitleSave?.(val);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    }}
-                />
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', margin: '0 20px' }}>
+                    <input
+                        type="text"
+                        className="title-input"
+                        placeholder="제목을 입력해주세요."
+                        value={title ?? ""}
+                        onChange={(e) => onTitleChange?.(e.target.value)}
+                        onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val) onTitleSave?.(val);
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        style={{ flex: 1, margin: 0 }}
+                    />
+                    {activeUsers && activeUsers.active_users.length > 0 && (
+                        <div className="active-users-list">
+                            {activeUsers.active_users.map((activeUser) => {
+                                const isGuest = activeUser.user_type === 'GUEST';
+                                const displayText = isGuest ? 'G' : (activeUser.name?.charAt(0).toUpperCase() || 'U');
+                                const backgroundColor = isGuest ? getGuestColor(activeUser.id) : '#FFE44B';
+                                
+                                return (
+                                    <div
+                                        key={activeUser.id}
+                                        className="active-user-avatar"
+                                        style={{ backgroundColor }}
+                                        title={activeUser.name}
+                                    >
+                                        {displayText}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             )}
 
             {variant === "main" && (

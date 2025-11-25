@@ -238,11 +238,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     useEffect(() => {
         (async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const inviteToken = urlParams.get('invite');
+            if (inviteToken) {
+                dispatch({ type: 'LOGOUT' });
+                return;
+            }
+
+            const isEditorPage = window.location.pathname.includes('/editor/');
+
+            if (isEditorPage) {
+                let hasGuestToken = false;
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    if (key && key.startsWith('guestToken_')) {
+                        hasGuestToken = true;
+                        break;
+                    }
+                }
+
+                if (hasGuestToken) {
+                    dispatch({ type: 'LOGOUT' });
+                    return;
+                }
+                
+                const token = localStorage.getItem('accessToken');
+                if (!token) {
+                    dispatch({ type: 'LOGOUT' });
+                    return;
+                }
+            }
+
             const token = localStorage.getItem('accessToken');
             if (!token) {
                 dispatch({ type: 'LOGOUT' });
                 return;
             }
+            
             try {
                 const res = await fetch(`${API_BASE_URL}/auth/profile`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -255,7 +287,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     dispatch({ type: 'LOGOUT' });
                 }
             } catch (e) {
-                console.error('profile load failed', e);
+                console.error('[AuthContext] profile load failed', e);
                 dispatch({ type: 'LOGOUT' });
             }
         })();

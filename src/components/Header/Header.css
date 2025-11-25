@@ -32,8 +32,6 @@
 
 /* 제목 입력창 */
 .title-input {
-    flex: 1;
-    margin: 0 20px;
     padding: 8px;
     font-size: 15px;
     font-weight: bold;
@@ -47,6 +45,29 @@
 .title-input::placeholder {
     color: rgba(0, 0, 0, 0.5);
     font-weight: normal;
+}
+
+/* 참여 중인 유저 목록 */
+.active-users-list {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.active-user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: #30270C;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
 }
 
 /* 메인 페이지용 버튼 */
