@@ -216,6 +216,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const oauthError = urlParams.get('oauth_error');
 
         if (oauthSuccess === 'true' || oauthSuccess === '1') {
+            for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                const key = sessionStorage.key(i);
+                if (key && key.startsWith('guestToken_')) {
+                    sessionStorage.removeItem(key);
+                }
+            }
+            
             loadUserFromOAuth().then((success) => {
                 if (success) {
                     if (oAuthSuccessCallback.current) {
@@ -239,6 +246,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         (async () => {
             const urlParams = new URLSearchParams(window.location.search);
+            
+            const oauthSuccess = urlParams.get('oauth_success');
+            if (oauthSuccess === 'true' || oauthSuccess === '1') {
+                return;
+            }
+            
             const inviteToken = urlParams.get('invite');
             if (inviteToken) {
                 dispatch({ type: 'LOGOUT' });
