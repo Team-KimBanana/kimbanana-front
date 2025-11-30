@@ -320,36 +320,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
 
             if (response.ok) {
-                const data: AuthResponse = await response.json();
-                localStorage.setItem('accessToken', data.accessToken);
-                localStorage.setItem('refreshToken', data.refreshToken);
+                const authorizationHeader = response.headers.get('Authorization');
+                const refreshTokenHeader = response.headers.get('X-Refresh-Token');
+                
+                let accessToken = '';
+                let refreshToken = '';
+                
+                if (authorizationHeader && authorizationHeader.startsWith('Bearer ')) {
+                    accessToken = authorizationHeader.substring(7); // "Bearer " 제거
+                }
+                
+                if (refreshTokenHeader) {
+                    refreshToken = refreshTokenHeader;
+                }
+
+                if (!accessToken) {
+                    const errorMessage = 'Access Token을 받아오는데 실패했습니다.';
+                    dispatch({ type: 'LOGIN_FAILURE', payload: errorMessage });
+                    return { success: false, error: errorMessage };
+                }
+
+                const userInfo: UserInfo = await response.json();
+                
+                localStorage.setItem('accessToken', accessToken);
+                if (refreshToken) {
+                    localStorage.setItem('refreshToken', refreshToken);
+                }
                 refreshRetryCount.current = 0;
 
-                try {
-                    await loadUser(data.accessToken);
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                } catch (error) {
-                    console.warn('프로필 조회 실패, 임시 사용자 정보 생성');
-                    const tempUser: User = {
-                        id: 'temp_user_' + Date.now(),
-                        email: credentials.email,
-                        name: credentials.email.split('@')[0],
-                        profileImage: undefined,
-                        createdAt: new Date().toISOString(),
-                    };
-                    dispatch({ type: 'LOAD_USER', payload: tempUser });
-                }
+                const user: User = {
+                    id: userInfo.id,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    profileImage: undefined,
+                    createdAt: new Date().toISOString(),
+                };
+                
+                dispatch({ type: 'LOGIN_SUCCESS', payload: user });
 
                 return { success: true };
             } else {
-                let responseText = '';
-                try {
-                    responseText = await response.text();
-                    console.log('로그인 실패 응답 본문:', responseText);
-                } catch (e) {
-                    console.log('응답 본문 읽기 실패:', e);
-                }
-
                 let errorMessage = '로그인에 실패했습니다.';
 
                 if (response.status === 400) {
