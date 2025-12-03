@@ -69,6 +69,21 @@ const Header: React.FC<HeaderProps> = ({
         };
     }, []);
 
+    // 중복 제거: 같은 id를 가진 사용자는 하나만 표시
+    const uniqueActiveUsers = useMemo(() => {
+        if (!activeUsers || !activeUsers.active_users || activeUsers.active_users.length === 0) {
+            return [];
+        }
+        const seen = new Set<string>();
+        return activeUsers.active_users.filter(user => {
+            if (seen.has(user.id)) {
+                return false;
+            }
+            seen.add(user.id);
+            return true;
+        });
+    }, [activeUsers]);
+
     const handleLogout = () => {
         if (window.confirm("로그아웃 하시겠습니까?")) {
             logout();
@@ -149,9 +164,9 @@ const Header: React.FC<HeaderProps> = ({
                         }}
                         style={{ flex: 1, margin: 0 }}
                     />
-                    {activeUsers && activeUsers.active_users.length > 0 && (
+                    {uniqueActiveUsers.length > 0 && (
                         <div className="active-users-list">
-                            {activeUsers.active_users.map((activeUser) => {
+                            {uniqueActiveUsers.map((activeUser) => {
                                 const isGuest = activeUser.user_type === 'GUEST';
                                 const displayText = isGuest ? 'G' : (activeUser.name?.charAt(0).toUpperCase() || 'U');
                                 const backgroundColor = isGuest ? getGuestColor(activeUser.id) : '#FFE44B';

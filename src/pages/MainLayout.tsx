@@ -493,12 +493,30 @@ const MainLayout: React.FC = () => {
         }
 
         if (stompClientRef.current?.connected) {
+            usersSubRef.current?.unsubscribe();
+            usersSubRef.current = stompClientRef.current.subscribe(`/topic/presentation.${presentationId}.users`, (message) => {
+                try {
+                    const data: ActiveUsersResponse = JSON.parse(message.body);
+                    setActiveUsers(data);
+                } catch (e) {
+                    console.error('접속자 목록 파싱 실패:', e);
+                }
+            });
             return;
         }
 
         const tokenPromise = finalGuestToken ? Promise.resolve(finalGuestToken) : getAuthToken();
         tokenPromise.then((token) => {
             if (stompClientRef.current?.connected) {
+                usersSubRef.current?.unsubscribe();
+                usersSubRef.current = stompClientRef.current.subscribe(`/topic/presentation.${presentationId}.users`, (message) => {
+                    try {
+                        const data: ActiveUsersResponse = JSON.parse(message.body);
+                        setActiveUsers(data);
+                    } catch (e) {
+                        console.error('접속자 목록 파싱 실패:', e);
+                    }
+                });
                 return;
             }
 
